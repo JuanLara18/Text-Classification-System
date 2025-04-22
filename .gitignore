@@ -1,0 +1,95 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.settings/
+
+# Testing
+.coverage
+coverage.xml
+*.cover
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+nosetests.xml
+coverage.html
+
+# Logs
+*.log
+logs/
+translation_process.log
+
+# Cache files
+.cache/
+cache/
+*.db
+*.sqlite
+*.sqlite3
+
+# Checkpoints and intermediate files
+checkpoints/
+intermediate/
+*.checkpoint
+*.parquet
+*.csv
+*.dta
+
+# Environment variables and secrets
+.env
+.secrets
+*.pem
+*.key
+
+# Data files
+data/
+input/
+output/
+*.dta
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.avro
+*.json
+*.jsonl
+
+# Documentation builds
+docs/_build/
+docs/api/
+
+# Spark specific
+derby.log
+metastore_db/
+spark-warehouse/
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# API keys and credentials
+credentials.json
+*_key.txt
+*_config.json
