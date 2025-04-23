@@ -1,3 +1,4 @@
+# Modificar la parte inicial del archivo modules/data_processor.py
 import os
 import re
 import numpy as np
@@ -36,10 +37,12 @@ try:
     nltk.data.find('tokenizers/punkt')
 except LookupError:
     nltk.download('punkt')
+
 try:
     nltk.data.find('corpora/stopwords')
 except LookupError:
     nltk.download('stopwords')
+
 try:
     nltk.data.find('corpora/wordnet')
 except LookupError:

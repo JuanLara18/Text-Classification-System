@@ -4,6 +4,7 @@ import pandas as pd
 from typing import Dict, List, Union, Optional, Tuple, Any
 import logging
 import pickle
+import traceback 
 from pathlib import Path
 import time
 from sklearn.cluster import KMeans, AgglomerativeClustering
@@ -14,6 +15,7 @@ import warnings
 import random
 import openai
 from collections import defaultdict, Counter
+from pyspark.sql import DataFrame as SparkDataFrame
 
 
 class BaseClusterer:
@@ -958,6 +960,9 @@ class ClassifierManager:
             
             weights = np.array(weights) / sum(weights)
             
+            # Check if we're working with a PySpark DataFrame
+            is_spark_df = isinstance(dataframe, SparkDataFrame)
+            
             # Extract or load features for each column
             for i, column in enumerate(columns):
                 # Check if features are already extracted for this column
@@ -971,7 +976,16 @@ class ClassifierManager:
                     
                     # Get texts for feature extraction
                     preprocessed_column = preprocessed_columns[i]
-                    texts = dataframe[preprocessed_column].dropna().tolist()
+                    
+                    # Handle PySpark DataFrame differently from pandas DataFrame
+                    if is_spark_df:
+                        # Alternativa: Convertir todo el DataFrame a pandas primero
+                        # Esto evita problemas con NLTK en los workers de Spark
+                        pandas_df = dataframe.toPandas()
+                        texts = pandas_df[preprocessed_column].dropna().tolist()
+                    else:
+                        # Para pandas DataFrame, procesar directamente
+                        texts = dataframe[preprocessed_column].dropna().tolist()
                     
                     if not texts:
                         self.logger.warning(f"No texts found in column {preprocessed_column}")
@@ -1010,9 +1024,14 @@ class ClassifierManager:
             self.clusterers[perspective_name] = clusterer
             self.cluster_assignments_dict[perspective_name] = cluster_assignments
             
-            # Add cluster assignments to the dataframe
-            result_df = dataframe.copy()
-            result_df[output_column] = cluster_assignments
+            # Si estamos usando PySpark, convertimos todo a pandas para el resto del procesamiento
+            if is_spark_df:
+                result_df = dataframe.toPandas()
+                result_df[output_column] = cluster_assignments
+            else:
+                # Para pandas DataFrame, agregar directamente
+                result_df = dataframe.copy()
+                result_df[output_column] = cluster_assignments
             
             # Add cluster labels if configured
             if self.config.get_config_value('cluster_labeling.method', 'tfidf') != 'none':
@@ -1023,8 +1042,12 @@ class ClassifierManager:
             
         except Exception as e:
             self.logger.error(f"Error applying perspective {perspective_name}: {str(e)}")
+            try:
+                self.logger.error(traceback.format_exc())
+            except Exception:
+                self.logger.error("Error getting traceback")
             raise RuntimeError(f"Failed to apply perspective {perspective_name}: {str(e)}")
-
+    
     def create_clusterer(self, algorithm, perspective_config):
         """
         Creates a clusterer based on the algorithm name.
