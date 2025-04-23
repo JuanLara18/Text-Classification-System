@@ -114,8 +114,24 @@ class BaseClusterer:
 
 
 class KMeansClusterer(BaseClusterer):
-    """K-Means clustering algorithm."""
-
+    """K-Means clustering algorithm implementation.
+    
+    This class provides an implementation of the K-Means clustering algorithm
+    for text classification. It supports automatic determination of the optimal
+    number of clusters using silhouette score.
+    
+    Attributes:
+        perspective_config (dict): Configuration for this clustering perspective.
+        n_clusters (int): Number of clusters to generate.
+        random_state (int): Random seed for reproducibility.
+        n_init (int): Number of times to run the algorithm with different centroid seeds.
+        max_iter (int): Maximum number of iterations for a single run.
+        k_range (list, optional): Range of k values to evaluate for optimal k.
+        model (KMeans): The scikit-learn KMeans model after fitting.
+        cluster_centers_ (numpy.ndarray): Coordinates of cluster centers.
+        labels_ (numpy.ndarray): Cluster labels for each data point.
+    """
+    
     def __init__(self, config, logger, perspective_config):
         """
         Initializes the K-Means clusterer.
@@ -210,15 +226,24 @@ class KMeansClusterer(BaseClusterer):
             raise RuntimeError(f"K-Means prediction failed: {str(e)}")
 
     def determine_optimal_k(self, features, k_range):
-        """
-        Determines the optimal number of clusters using the silhouette score.
-
+        """Determines the optimal number of clusters using silhouette score.
+        
+        This method evaluates different numbers of clusters within the specified
+        range and selects the value that maximizes the silhouette score, which
+        measures how well-separated the resulting clusters are.
+        
         Args:
-            features: Feature matrix
-            k_range: Range of k values to evaluate
-
+            features (numpy.ndarray): Feature matrix of shape (n_samples, n_features).
+            k_range (list): Range of k values to evaluate, specified as [min_k, max_k].
+        
         Returns:
-            Optimal k value
+            int: The optimal number of clusters.
+            
+        Raises:
+            ValueError: If k_range is not a list of length 2.
+            
+        Note:
+            For large datasets, this method uses a sample of the data to improve performance.
         """
         if isinstance(k_range, list) and len(k_range) == 2:
             k_min, k_max = k_range
