@@ -1498,10 +1498,10 @@ class ClassifierManager:
                     # Get characteristics for this cluster
                     characteristics = self.cluster_labeler.extract_cluster_characteristics(
                         result_df, 
-                        text_columns, 
+                        columns, 
                         output_column, 
                         cluster_id,
-                        vectorizer=None  # We don't have the vectorizer here
+                        vectorizer=None
                     )
                     cluster_characteristics.append(characteristics)
                 
