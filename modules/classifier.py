@@ -932,7 +932,7 @@ class ClassifierManager:
         Applies a clustering perspective to the data.
 
         Args:
-            dataframe: DataFrame with the data
+            dataframe: DataFrame with the data (either pandas DataFrame or PySpark DataFrame)
             perspective_name: Name of the perspective
             perspective_config: Configuration for this perspective
 
@@ -991,8 +991,7 @@ class ClassifierManager:
                     
                     # Handle PySpark DataFrame differently from pandas DataFrame
                     if is_spark_df:
-                        # Alternativa: Convertir todo el DataFrame a pandas primero
-                        # Esto evita problemas con NLTK en los workers de Spark
+                        # Convert to pandas for feature extraction
                         pandas_df = dataframe.toPandas()
                         texts = pandas_df[preprocessed_column].dropna().tolist()
                     else:
@@ -1036,17 +1035,19 @@ class ClassifierManager:
             self.clusterers[perspective_name] = clusterer
             self.cluster_assignments_dict[perspective_name] = cluster_assignments
             
-            # Si estamos usando PySpark, convertimos todo a pandas para el resto del procesamiento
+            # Si estamos usando PySpark, asegurarnos de trabajar con pandas
             if is_spark_df:
                 result_df = dataframe.toPandas()
-                result_df[output_column] = cluster_assignments
             else:
-                # Para pandas DataFrame, agregar directamente
+                # Para pandas DataFrame, usar una copia
                 result_df = dataframe.copy()
-                result_df[output_column] = cluster_assignments
+            
+            # Añadir asignaciones de clusters
+            result_df[output_column] = cluster_assignments
             
             # Add cluster labels if configured
             if self.config.get_config_value('cluster_labeling.method', 'tfidf') != 'none':
+                # Pasar el DataFrame de pandas al método de etiquetado
                 result_df = self.add_cluster_labels(result_df, perspective_config)
             
             self.logger.info(f"Completed {perspective_name} classification perspective")
@@ -1059,7 +1060,6 @@ class ClassifierManager:
             except Exception:
                 self.logger.error("Error getting traceback")
             raise RuntimeError(f"Failed to apply perspective {perspective_name}: {str(e)}")
-    
     def create_clusterer(self, algorithm, perspective_config):
         """
         Creates a clusterer based on the algorithm name.

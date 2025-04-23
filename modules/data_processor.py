@@ -119,7 +119,7 @@ class DataProcessor:
         Saves data to a Stata file.
 
         Args:
-            dataframe: DataFrame to save (PySpark DataFrame)
+            dataframe: DataFrame to save (PySpark DataFrame or pandas DataFrame)
             file_path: Optional path that overrides the configuration
         """
         filepath = file_path or self.output_file
@@ -129,8 +129,7 @@ class DataProcessor:
             # Ensure the directory exists
             os.makedirs(os.path.dirname(filepath), exist_ok=True)
             
-            # Convert Spark DataFrame to pandas DataFrame
-            # Use toPandas() for smaller datasets, or more efficient methods for larger ones
+            # Convert Spark DataFrame to pandas DataFrame if needed
             if isinstance(dataframe, SparkDataFrame):
                 self.logger.info("Converting Spark DataFrame to pandas DataFrame")
                 pd_df = dataframe.toPandas()

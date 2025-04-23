@@ -25,6 +25,7 @@ from modules.data_processor import DataProcessor
 from modules.classifier import ClassifierManager
 from modules.evaluation import ClusteringEvaluator, ClusteringVisualizer, EvaluationReporter
 
+from pyspark.sql import DataFrame as SparkDataFrame
 
 class ClassificationPipeline:
     """Pipeline for the classification process."""
@@ -119,21 +120,45 @@ class ClassificationPipeline:
             self.logger.info("Starting classification pipeline execution")
             self.performance_monitor.start_timer('total_pipeline')
             
-            # Step 1: Load and preprocess data
-            self.performance_monitor.start_timer('data_processing')
-            dataframe = self.load_and_preprocess_data()
-            if dataframe is None:
-                self.logger.error("Data processing failed, aborting pipeline")
-                return False
-            self.performance_monitor.stop_timer('data_processing')
+            # Agregar manejo de excepciones específicas para Spark
+            max_retries = 3
+            retry_count = 0
             
-            # Step 2: Apply clustering perspectives
-            self.performance_monitor.start_timer('clustering')
-            result_dataframe, features_dict, cluster_assignments_dict = self.apply_clustering_perspectives(dataframe)
-            if result_dataframe is None:
-                self.logger.error("Clustering failed, aborting pipeline")
-                return False
-            self.performance_monitor.stop_timer('clustering')
+            while retry_count < max_retries:
+                try:
+                    # Step 1: Load and preprocess data
+                    self.performance_monitor.start_timer('data_processing')
+                    dataframe = self.load_and_preprocess_data()
+                    if dataframe is None:
+                        self.logger.error("Data processing failed, aborting pipeline")
+                        return False
+                    self.performance_monitor.stop_timer('data_processing')
+                    
+                    # Step 2: Apply clustering perspectives
+                    self.performance_monitor.start_timer('clustering')
+                    result_dataframe, features_dict, cluster_assignments_dict = self.apply_clustering_perspectives(dataframe)
+                    if result_dataframe is None:
+                        self.logger.error("Clustering failed, aborting pipeline")
+                        return False
+                    self.performance_monitor.stop_timer('clustering')
+                    
+                    # Si llegamos aquí, no necesitamos reintentar
+                    break
+                    
+                except EOFError as e:
+                    retry_count += 1
+                    self.logger.warning(f"Communication error with Spark (attempt {retry_count}/{max_retries}): {str(e)}")
+                    
+                    if retry_count >= max_retries:
+                        self.logger.error("Maximum retries reached, aborting pipeline")
+                        return False
+                    
+                    # Reiniciar la sesión Spark
+                    self.logger.info("Restarting Spark session")
+                    self.spark_manager.stop_session()
+                    time.sleep(5)  # Esperar un poco antes de reiniciar
+                    self.spark_manager.get_or_create_session()
+                    continue
             
             # Step 3: Evaluate and generate reports
             self.performance_monitor.start_timer('evaluation')
@@ -301,7 +326,15 @@ class ClassificationPipeline:
             features_dict = {}
             cluster_assignments_dict = {}
             
-            result_dataframe = dataframe
+            # Check if we're working with a Spark DataFrame
+            is_spark_df = isinstance(dataframe, SparkDataFrame)
+            
+            # If it's a Spark DataFrame, convert to pandas for easier manipulation
+            if is_spark_df:
+                self.logger.info("Converting Spark DataFrame to pandas for classification processing")
+                pandas_df = dataframe.toPandas()
+            else:
+                pandas_df = dataframe.copy()
             
             # Apply each perspective
             for perspective_name, perspective_config in perspectives.items():
@@ -317,14 +350,14 @@ class ClassificationPipeline:
                         checkpoint_data = self.checkpoint_manager.load_checkpoint(perspective_checkpoint_key)
                         if checkpoint_data and len(checkpoint_data) == 3:
                             perspective_df, perspective_features, perspective_assignments = checkpoint_data
-                            # Update the result dataframe with the perspective's clustering column
+                            # Update the pandas DataFrame with the perspective's clustering column
                             output_column = perspective_config.get('output_column')
                             if output_column in perspective_df.columns:
-                                result_dataframe[output_column] = perspective_df[output_column]
+                                pandas_df[output_column] = perspective_df[output_column]
                                 # If labels were generated, add them too
                                 label_column = f"{output_column}_label"
                                 if label_column in perspective_df.columns:
-                                    result_dataframe[label_column] = perspective_df[label_column]
+                                    pandas_df[label_column] = perspective_df[label_column]
                                 
                                 # Store features and assignments
                                 features_dict[f"{perspective_name}_combined"] = perspective_features
@@ -335,18 +368,19 @@ class ClassificationPipeline:
                                 continue
                     
                     # If no checkpoint or loading failed, process the perspective
+                    # Pass the pandas DataFrame to classify_perspective
                     perspective_df, perspective_features, perspective_assignments = self.classifier_manager.classify_perspective(
-                        result_dataframe, perspective_name, perspective_config
+                        pandas_df, perspective_name, perspective_config
                     )
                     
-                    # Update the result dataframe with the perspective's output
+                    # Update the pandas DataFrame with the perspective's output
                     output_column = perspective_config.get('output_column')
-                    result_dataframe[output_column] = perspective_df[output_column]
+                    pandas_df[output_column] = perspective_df[output_column]
                     
                     # If labels were generated, add them too
                     label_column = f"{output_column}_label"
                     if label_column in perspective_df.columns:
-                        result_dataframe[label_column] = perspective_df[label_column]
+                        pandas_df[label_column] = perspective_df[label_column]
                     
                     # Store features and assignments
                     features_dict[f"{perspective_name}_combined"] = perspective_features
@@ -372,14 +406,14 @@ class ClassificationPipeline:
                 self.logger.error("No perspectives were applied successfully")
                 return None, None, None
             
-            # Save overall checkpoint
+            # Save overall checkpoint with pandas DataFrame
             self.checkpoint_manager.save_checkpoint(
-                (result_dataframe, features_dict, cluster_assignments_dict),
+                (pandas_df, features_dict, cluster_assignments_dict),
                 'clustering_results'
             )
             
             self.logger.info("All clustering perspectives applied")
-            return result_dataframe, features_dict, cluster_assignments_dict
+            return pandas_df, features_dict, cluster_assignments_dict
             
         except Exception as e:
             self.logger.error(f"Error applying clustering perspectives: {str(e)}")
@@ -497,8 +531,8 @@ class ClassificationPipeline:
         Saves the results to output files.
 
         Args:
-            dataframe: DataFrame with all results
-            
+            dataframe: DataFrame with all results (pandas DataFrame)
+                
         Returns:
             bool: True if successful, False otherwise
         """
@@ -513,8 +547,11 @@ class ClassificationPipeline:
             output_dir = os.path.dirname(output_file)
             FileOperationUtilities.create_directory_if_not_exists(output_dir)
             
-            # Save to Stata format
-            self.data_processor.save_data(dataframe, output_file)
+            # No need to check if it's a Spark DataFrame, we're ensuring it's pandas now
+            self.logger.info(f"Saving pandas DataFrame with {dataframe.shape[0]} rows and {dataframe.shape[1]} columns")
+            
+            # Save to Stata format directly
+            dataframe.to_stata(output_file, write_index=False)
             
             # Log summary of added columns
             perspectives = self.config.get_clustering_perspectives()
@@ -538,7 +575,7 @@ class ClassificationPipeline:
                 f.write(f"Added columns: {', '.join(added_columns)}\n")
             
             return True
-            
+                
         except Exception as e:
             self.logger.error(f"Error saving results: {str(e)}")
             self.logger.error(traceback.format_exc())
