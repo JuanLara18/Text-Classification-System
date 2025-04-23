@@ -17,3 +17,5 @@ pytest
 tqdm
 fastapi
 uvicorn
+nltk
+psutil

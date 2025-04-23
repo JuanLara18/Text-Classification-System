@@ -300,7 +300,8 @@ class ClassificationPipeline:
             # Initialize dictionaries to store results
             features_dict = {}
             cluster_assignments_dict = {}
-            result_dataframe = dataframe.copy()
+            
+            result_dataframe = dataframe
             
             # Apply each perspective
             for perspective_name, perspective_config in perspectives.items():
