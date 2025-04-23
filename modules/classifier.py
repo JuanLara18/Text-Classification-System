@@ -302,7 +302,14 @@ class HDBSCANClusterer(BaseClusterer):
         self.params = perspective_config.get('params', {})
         self.min_cluster_size = self.params.get('min_cluster_size', 15)
         self.min_samples = self.params.get('min_samples', 5)
-        self.metric = self.params.get('metric', 'euclidean')
+        metric = self.params.get('metric', 'euclidean')
+        if metric == 'cosine':
+            self.logger.warning(
+                "HDBSCAN doesn't support 'cosine'. Changed to 'euclidean'."
+            )
+            self.metric = 'euclidean'
+        else:
+            self.metric = metric
         self.cluster_selection_epsilon = self.params.get('cluster_selection_epsilon', 0.0)
         self.alpha = self.params.get('alpha', 1.0)
         self.cluster_selection_method = self.params.get('cluster_selection_method', 'eom')  # 'eom' or 'leaf'
@@ -539,12 +546,17 @@ class AgglomerativeClusterer(BaseClusterer):
             )
             
             # Initialize and fit the model
-            self.model = AgglomerativeClustering(
-                n_clusters=self.n_clusters,
-                linkage=self.linkage,
-                affinity=self.affinity,
-                compute_distances=self.compute_distances
-            )
+            if self.linkage == 'ward':
+                self.model = AgglomerativeClustering(
+                    n_clusters=self.n_clusters,
+                    linkage=self.linkage,
+                )
+            else:
+                self.model = AgglomerativeClustering(
+                    n_clusters=self.n_clusters,
+                    linkage=self.linkage,
+                    metric=self.affinity 
+                )
             
             self.model.fit(features)
             
