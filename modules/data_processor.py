@@ -320,8 +320,9 @@ class TextPreprocessor:
             text = text.lower()
         
         # Tokenize text
-        tokens = word_tokenize(text)
-        
+        #tokens = word_tokenize(text)
+        tokens = text.split()
+
         # Process tokens
         processed_tokens = []
         for token in tokens:
@@ -593,7 +594,17 @@ class FeatureExtractor:
         # Extract embeddings
         try:
             batch_size = self.config.get_config_value('performance.batch_size', 32)
-            show_progress_bar = self.logger.logger.level <= logging.INFO
+            # More robust way to check logging level without assuming logger structure
+            try:
+                # First attempt: check if logger has a level attribute directly
+                show_progress_bar = hasattr(self.logger, 'level') and self.logger.level <= logging.INFO
+            except AttributeError:
+                try:
+                    # Second attempt: check if logger has a logger attribute with level
+                    show_progress_bar = hasattr(self.logger, 'logger') and self.logger.logger.level <= logging.INFO
+                except AttributeError:
+                    # Fallback: don't show progress bar
+                    show_progress_bar = False
             
             self.logger.info(f"Extracting embeddings with batch size {batch_size}")
             embeddings = self.sentence_transformer.encode(
@@ -632,12 +643,15 @@ class FeatureExtractor:
         
         try:
             if method == 'umap':
-                # UMAP reduction
+                # Add more parameters to improve performance and stability
                 reducer = umap.UMAP(
                     n_components=n_components,
                     random_state=random_state,
-                    n_neighbors=15,
-                    min_dist=0.1
+                    n_neighbors=30,        # Increase from default 15
+                    min_dist=0.25,         # Increase for more stability
+                    metric='cosine',       # Often better for text
+                    low_memory=True,       # Enable low memory mode
+                    verbose=True           # See progress
                 )
                 reduced_features = reducer.fit_transform(feature_matrix)
             elif method == 'pca':

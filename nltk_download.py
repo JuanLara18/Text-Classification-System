@@ -1,26 +1,19 @@
 #!/usr/bin/env python3
-"""
-Script para descargar todos los recursos NLTK necesarios para el proyecto.
-"""
-
 import nltk
-import os
-import sys
 
 def download_nltk_resources():
-    """Descarga los recursos NLTK necesarios para el proyecto."""
     resources = ['punkt', 'stopwords', 'wordnet']
     
-    print("Descargando recursos NLTK...")
+    print("Downloading NLTK resources...")
     for resource in resources:
         try:
-            print(f"Descargando {resource}...")
+            print(f"Downloading {resource}...")
             nltk.download(resource)
-            print(f"✅ {resource} descargado correctamente")
+            print(f"✅ {resource} downloaded successfully")
         except Exception as e:
-            print(f"❌ Error descargando {resource}: {str(e)}")
+            print(f"❌ Error downloading {resource}: {str(e)}")
     
-    print("\nVerificando instalación:")
+    print("\nVerifying installation:")
     for resource in resources:
         try:
             if resource == 'punkt':
@@ -29,12 +22,10 @@ def download_nltk_resources():
                 nltk.data.find('corpora/stopwords')
             elif resource == 'wordnet':
                 nltk.data.find('corpora/wordnet')
-            print(f"✅ {resource} verificado correctamente")
+            print(f"✅ {resource} verified successfully")
         except LookupError:
-            print(f"❌ {resource} no está disponible")
-    
-    print("\nDirectorios de datos NLTK:")
-    print(nltk.data.path)
+            print(f"❌ {resource} is not available")
 
 if __name__ == "__main__":
+    nltk.data.path.append('/export/home/rcsguest/rcs_jcamacho/nltk_data')
     download_nltk_resources()
