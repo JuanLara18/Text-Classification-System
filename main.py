@@ -12,6 +12,7 @@ import traceback
 import time
 from datetime import datetime
 from pathlib import Path
+import numpy as np
 
 from config import ConfigManager, configure_argument_parser
 from modules.utilities import (
@@ -23,7 +24,7 @@ from modules.utilities import (
 )
 from modules.data_processor import DataProcessor
 from modules.classifier import ClassifierManager
-from modules.evaluation import ClusteringEvaluator, ClusteringVisualizer, EvaluationReporter
+from modules.evaluation import ClusterAnalyzer, ClusteringEvaluator, ClusteringVisualizer, EvaluationReporter
 
 from pyspark.sql import DataFrame as SparkDataFrame
 
@@ -166,6 +167,14 @@ class ClassificationPipeline:
             if evaluation_results is None:
                 self.logger.warning("Evaluation produced no results, but continuing with saving")
             self.performance_monitor.stop_timer('evaluation')
+            
+            # Step 3.5: Perform cross-perspective analysis if we have multiple perspectives
+            if result_dataframe is not None and len(self.perspectives) > 1:
+                self.performance_monitor.start_timer('cross_perspective_analysis')
+                cross_analysis_results = self.perform_cross_perspective_analysis(
+                    result_dataframe, evaluation_results
+                )
+                self.performance_monitor.stop_timer('cross_perspective_analysis')            
             
             # Step 4: Save results
             self.performance_monitor.start_timer('saving_results')
@@ -458,6 +467,9 @@ class ClassificationPipeline:
             # Dictionary to store evaluation results
             evaluation_results = {}
             
+            # Initialize ClusterAnalyzer
+            cluster_analyzer = ClusterAnalyzer(self.config, self.logger)            
+            
             # Evaluate each perspective
             for perspective_name in cluster_assignments_dict.keys():
                 self.logger.info(f"Evaluating perspective: {perspective_name}")
@@ -475,6 +487,62 @@ class ClassificationPipeline:
                 try:
                     # Evaluate clustering
                     metrics = self.evaluator.evaluate_clustering(features, assignments)
+                    
+                    # Perform enhanced cluster analysis if configured
+                    if self.config.get_config_value('cluster_analysis.enabled', True):
+                        self.logger.info(f"Performing enhanced cluster analysis for {perspective_name}")
+                        
+                        # Extract cluster characteristics if not already present
+                        if hasattr(dataframe, 'attrs') and 'cluster_characteristics' in dataframe.attrs:
+                            characteristics = dataframe.attrs['cluster_characteristics']
+                            self.logger.info(f"Using {len(characteristics)} stored cluster characteristics")
+                        else:
+                            # Analyze cluster content
+                            characteristics = cluster_analyzer.analyze_cluster_content(
+                                features, vectorizer=None, cluster_assignments=assignments, k=len(np.unique(assignments))
+                            )
+                        
+                        # Generate cluster summary
+                        cluster_summary = cluster_analyzer.generate_cluster_summary(characteristics)
+                        
+                        # Create additional visualizations
+                        if 'cluster_size_distribution' not in visualization_paths:
+                            # Get cluster names if available
+                            output_column = self.perspectives[perspective_name].get('output_column', f"{perspective_name}_cluster")
+                            label_column = f"{output_column}_label"
+                            cluster_names = {}
+                            
+                            if label_column in dataframe.columns:
+                                for cluster_id in np.unique(assignments):
+                                    mask = dataframe[output_column] == cluster_id
+                                    if any(mask):
+                                        names = dataframe.loc[mask, label_column].dropna()
+                                        if len(names) > 0:
+                                            cluster_names[cluster_id] = names.iloc[0]
+                            
+                            # Create distribution plot
+                            viz_path = self.visualizer.create_cluster_size_distribution_plot(
+                                assignments, cluster_names, perspective_name
+                            )
+                            visualization_paths['cluster_size_distribution'] = viz_path
+                        
+                        # Create term importance plot if we have characteristics with top terms
+                        if characteristics and 'top_terms' in characteristics[0]:
+                            viz_path = self.visualizer.create_cluster_term_importance_plot(
+                                characteristics, perspective_name
+                            )
+                            visualization_paths['term_importance'] = viz_path
+                        
+                        # Generate detailed cluster report
+                        if self.config.get_config_value('cluster_analysis.create_detailed_reports', True):
+                            report_path = self.reporter.generate_detailed_cluster_report(
+                                perspective_name, characteristics, visualization_paths
+                            )
+                            
+                            if 'report_paths' not in evaluation_results[perspective_name]:
+                                evaluation_results[perspective_name]['report_paths'] = {}
+                            
+                            evaluation_results[perspective_name]['report_paths']['detailed_report'] = report_path                    
                     
                     # Generate visualizations
                     visualization_paths = {}
@@ -525,6 +593,88 @@ class ClassificationPipeline:
             self.logger.error(f"Error during evaluation and reporting: {str(e)}")
             self.logger.error(traceback.format_exc())
             return None
+
+    def perform_cross_perspective_analysis(self, dataframe, evaluation_results):
+        """
+        Performs analysis across different clustering perspectives.
+        
+        Args:
+            dataframe: DataFrame with all clustering results
+            evaluation_results: Dictionary of evaluation results by perspective
+            
+        Returns:
+            Dictionary with cross-perspective analysis results
+        """
+        self.logger.info("Performing cross-perspective analysis")
+        
+        try:
+            # Check if analysis is enabled
+            if not self.config.get_config_value('cluster_analysis.cross_perspective_analysis', True):
+                self.logger.info("Cross-perspective analysis is disabled in configuration")
+                return {}
+            
+            # Get perspectives
+            perspectives = self.config.get_clustering_perspectives()
+            if len(perspectives) < 2:
+                self.logger.info("Need at least 2 perspectives for cross-perspective analysis")
+                return {}
+            
+            # Prepare for analysis
+            perspective_names = list(perspectives.keys())
+            perspective_columns = [config.get('output_column', f"{name}_cluster") for name, config in perspectives.items()]
+            
+            # Create cross-perspective visualizations and analysis
+            cross_analysis_results = {}
+            
+            # Initialize the EvaluationReporter if not already available
+            if not hasattr(self, 'reporter') or self.reporter is None:
+                results_dir = self.config.get_results_dir()
+                self.reporter = EvaluationReporter(self.config, self.logger, results_dir)
+            
+            # Initialize the ClusteringVisualizer if not already available
+            if not hasattr(self, 'visualizer') or self.visualizer is None:
+                results_dir = self.config.get_results_dir()
+                self.visualizer = ClusteringVisualizer(self.config, self.logger, results_dir)
+            
+            # Generate correlation heatmaps between each pair of perspectives
+            from itertools import combinations
+            for i, j in combinations(range(len(perspective_names)), 2):
+                name1 = perspective_names[i]
+                name2 = perspective_names[j]
+                col1 = perspective_columns[i]
+                col2 = perspective_columns[j]
+                
+                # Create correlation heatmap
+                heatmap_path = self.visualizer.create_cluster_correlation_heatmap(
+                    dataframe, col1, col2, name1, name2
+                )
+                
+                # Create cross-perspective analysis
+                analysis = self.reporter.create_cross_perspective_analysis(
+                    dataframe, col1, col2, name1, name2
+                )
+                
+                # Store results
+                key = f"{name1}_vs_{name2}"
+                cross_analysis_results[key] = {
+                    'heatmap_path': heatmap_path,
+                    'analysis': analysis
+                }
+            
+            # Generate combined perspectives report
+            combined_report_path = self.reporter.generate_combined_perspectives_report(
+                dataframe, perspective_columns, perspective_names
+            )
+            
+            cross_analysis_results['combined_report'] = combined_report_path
+            
+            self.logger.info(f"Cross-perspective analysis completed with {len(cross_analysis_results)-1} perspective pairs")
+            return cross_analysis_results
+            
+        except Exception as e:
+            self.logger.error(f"Error during cross-perspective analysis: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            return {}
 
     def save_results(self, dataframe):
         """

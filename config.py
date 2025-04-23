@@ -61,6 +61,14 @@ class ConfigManager:
             'visualizations': ['embeddings_plot', 'silhouette_plot', 'distribution_plot'],
             'output_format': ['html', 'json', 'csv']
         },
+        'cluster_analysis': {
+        'enabled': True,
+        'top_terms_count': 15,
+        'examples_count': 5,
+        'create_detailed_reports': True,
+        'cross_perspective_analysis': True,
+        'enhanced_naming': True
+        },
         'spark': {
             'executor_memory': '4g',
             'driver_memory': '4g',
@@ -568,6 +576,14 @@ class ConfigManager:
         """
         return copy.deepcopy(self.config)
 
+    def get_cluster_analysis_config(self):
+        """
+        Gets cluster analysis configuration.
+        
+        Returns:
+            dict: Cluster analysis configuration
+        """
+        return self.config.get('cluster_analysis', {})
 
 def configure_argument_parser():
     """

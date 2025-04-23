@@ -16,6 +16,8 @@ import random
 import openai
 from collections import defaultdict, Counter
 from pyspark.sql import DataFrame as SparkDataFrame
+import time
+import json
 
 
 class BaseClusterer:
@@ -895,6 +897,420 @@ class ClusterLabeler:
             # Return generic labels as fallback
             return {cluster_id: f"Cluster {cluster_id}" for cluster_id in unique_clusters}
 
+    def extract_cluster_characteristics(self, dataframe, text_columns, cluster_column, cluster_id, vectorizer=None):
+        """
+        Extracts detailed characteristics for a specific cluster.
+        
+        This method analyzes a cluster and extracts key information including size,
+        percentage of total data, top terms based on TF-IDF scores, and representative
+        examples that illustrate the cluster's content.
+        
+        Args:
+            dataframe: DataFrame containing the data
+            text_columns: List of text column names to analyze
+            cluster_column: Column name containing cluster assignments
+            cluster_id: ID of the cluster to analyze
+            vectorizer: Optional pre-fitted TF-IDF vectorizer
+            
+        Returns:
+            Dictionary containing cluster characteristics:
+                - id: Cluster identifier
+                - size: Number of records in the cluster
+                - percentage: Percentage of total records
+                - top_terms: List of (term, score) tuples for most representative terms
+                - examples: List of representative example texts
+        """
+        self.logger.info(f"Extracting characteristics for cluster {cluster_id} in column {cluster_column}")
+        
+        try:
+            # Create cluster mask
+            cluster_mask = dataframe[cluster_column] == cluster_id
+            cluster_size = cluster_mask.sum()
+            
+            if cluster_size == 0:
+                self.logger.warning(f"No records found for cluster {cluster_id}")
+                return {
+                    'id': cluster_id,
+                    'size': 0,
+                    'percentage': 0,
+                    'top_terms': [],
+                    'examples': []
+                }
+            
+            # Calculate percentage
+            total_records = len(dataframe[dataframe[cluster_column].notna()])
+            percentage = (cluster_size / total_records) * 100
+            
+            # Select examples from the cluster
+            examples = self.select_representative_examples(
+                dataframe, text_columns, cluster_column, cluster_id
+            )
+            
+            # Extract top terms if vectorizer is provided
+            top_terms = []
+            if vectorizer:
+                # Combine text from columns for records in this cluster
+                cluster_texts = []
+                for _, row in dataframe[cluster_mask].iterrows():
+                    combined_text = ' '.join([str(row[col]) for col in text_columns if pd.notna(row[col])])
+                    if combined_text.strip():
+                        cluster_texts.append(combined_text)
+                
+                if cluster_texts:
+                    # Transform texts to TF-IDF
+                    cluster_vectors = vectorizer.transform(cluster_texts)
+                    
+                    # Calculate average vector (centroid)
+                    centroid = cluster_vectors.mean(axis=0).A1
+                    
+                    # Get feature names
+                    feature_names = vectorizer.get_feature_names_out()
+                    
+                    # Get top terms
+                    top_indices = centroid.argsort()[-15:][::-1]
+                    top_terms = [(feature_names[idx], float(centroid[idx])) for idx in top_indices]
+            
+            # Create and return characteristics dictionary
+            characteristics = {
+                'id': cluster_id,
+                'size': int(cluster_size),
+                'percentage': round(percentage, 2),
+                'top_terms': top_terms,
+                'examples': examples
+            }
+            
+            self.logger.info(f"Extracted characteristics for cluster {cluster_id}: {cluster_size} records, {len(top_terms)} terms, {len(examples)} examples")
+            return characteristics
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting cluster characteristics: {str(e)}")
+            # Return basic structure with empty values
+            return {
+                'id': cluster_id,
+                'size': 0,
+                'percentage': 0,
+                'top_terms': [],
+                'examples': []
+            }
+        
+    def create_detailed_naming_prompt(self, characteristics, perspective_name, domain_context=None):
+        """
+        Creates a detailed prompt for OpenAI to generate high-quality cluster labels.
+        
+        This method constructs a structured prompt containing rich context about each 
+        cluster, providing clear guidelines for naming and including representative
+        examples and key terms.
+        
+        Args:
+            characteristics: List of cluster characteristic dictionaries 
+                            (from extract_cluster_characteristics)
+            perspective_name: Name of the clustering perspective (e.g., "Content Categories")
+            domain_context: Optional domain-specific context to guide naming (default: None)
+            
+        Returns:
+            String containing the formatted prompt for OpenAI
+        """
+        self.logger.info(f"Creating detailed naming prompt for {perspective_name} clusters")
+        
+        # Default domain context if none provided
+        if not domain_context:
+            domain_context = "educational materials and learning assets"
+        
+        # Create main header and guidelines
+        prompt = [
+            f"# Cluster Naming Task: {perspective_name}",
+            f"\nObjective: Create precise, descriptive names for {len(characteristics)} clusters of {domain_context}.",
+            "\n## Guidelines:",
+            "- Generate concise yet descriptive names (3-5 words) that capture the core theme of each cluster",
+            "- Use domain-appropriate terminology related to learning materials and educational content",
+            "- Ensure names are distinctive and non-overlapping between clusters",
+            "- Prioritize subject matter and content theme over format or metadata characteristics",
+            "- Names should be immediately understandable to educators and content designers",
+            "- Avoid generic names like 'General Information' or 'Miscellaneous Content'",
+            f"\n## {perspective_name} Clusters Analysis"
+        ]
+        
+        # Add detailed information for each cluster
+        for cluster in characteristics:
+            if 'id' not in cluster or 'size' not in cluster:
+                continue
+                
+            # Calculate percentage if not provided
+            percentage = cluster.get('percentage', 0)
+            
+            # Add cluster header and stats
+            prompt.extend([
+                f"\n### Cluster {cluster['id']} ({percentage:.1f}% of total, {cluster['size']} records)"
+            ])
+            
+            # Add key terms section if available
+            if 'top_terms' in cluster and cluster['top_terms']:
+                prompt.append("\n#### Key Terms (with weights):")
+                term_strings = []
+                for term, score in cluster['top_terms'][:10]:  # Limit to top 10 terms
+                    term_strings.append(f"{term} ({score:.3f})")
+                prompt.append(", ".join(term_strings))
+            
+            # Add examples section if available
+            if 'examples' in cluster and cluster['examples']:
+                prompt.append("\n#### Representative Examples:")
+                for i, example in enumerate(cluster['examples'][:3]):  # Limit to 3 examples
+                    # Truncate long examples
+                    short_example = example[:200] + "..." if len(example) > 200 else example
+                    prompt.append(f"{i+1}. {short_example}")
+        
+        # Add response format instructions
+        prompt.extend([
+            "\n## Response Format",
+            "Provide a JSON array with exactly one name for each cluster:",
+            '{"cluster_names": [',
+            '  "Descriptive name for cluster 0",',
+            '  "Descriptive name for cluster 1",',
+            '  ...',
+            ']}',
+            "\nEnsure each name reflects the distinctive content of its cluster and is relevant to the domain."
+        ])
+        
+        # Join all parts into a single string
+        complete_prompt = "\n".join(prompt)
+        
+        self.logger.debug(f"Created naming prompt of {len(complete_prompt)} characters")
+        return complete_prompt
+
+    def select_representative_examples(self, dataframe, text_columns, cluster_column, cluster_id, n_samples=5):
+        """
+        Selects diverse, representative examples from a cluster.
+        
+        This method attempts to select a diverse set of examples that represent
+        different aspects of a cluster, not just random samples. It prioritizes
+        longer, more content-rich examples when available.
+        
+        Args:
+            dataframe: DataFrame containing the data
+            text_columns: List of text column names to consider
+            cluster_column: Column name containing cluster assignments
+            cluster_id: ID of the cluster to analyze
+            n_samples: Number of examples to select (default: 5)
+            
+        Returns:
+            List of example texts from the cluster
+        """
+        self.logger.info(f"Selecting representative examples for cluster {cluster_id}")
+        
+        try:
+            # Create cluster mask
+            cluster_mask = dataframe[cluster_column] == cluster_id
+            cluster_data = dataframe[cluster_mask]
+            
+            if len(cluster_data) == 0:
+                self.logger.warning(f"No records found for cluster {cluster_id}")
+                return []
+                
+            # Combine text fields for each example
+            combined_texts = []
+            for _, row in cluster_data.iterrows():
+                combined_text = ' '.join([str(row[col]) for col in text_columns if pd.notna(row[col])])
+                if combined_text.strip():  # Only add non-empty texts
+                    combined_texts.append(combined_text)
+            
+            if not combined_texts:
+                self.logger.warning(f"No text content found in cluster {cluster_id}")
+                return []
+            
+            # Determine text lengths
+            text_lengths = [len(text) for text in combined_texts]
+            
+            # If we have more texts than requested samples, select strategically
+            if len(combined_texts) > n_samples:
+                # Get indices sorted by text length (descending)
+                sorted_indices = sorted(range(len(text_lengths)), key=lambda i: text_lengths[i], reverse=True)
+                
+                # Take some from the longest and some diversity 
+                # (here taking top 60% longest and 40% from different parts)
+                top_count = int(n_samples * 0.6)
+                diversity_count = n_samples - top_count
+                
+                # Get longest texts
+                selected_indices = sorted_indices[:top_count]
+                
+                # Add some diverse selections from different parts of the length distribution
+                if diversity_count > 0 and len(sorted_indices) > top_count:
+                    remaining = sorted_indices[top_count:]
+                    
+                    # Get evenly spaced indices from remaining
+                    step = max(1, len(remaining) // diversity_count)
+                    for i in range(0, len(remaining), step):
+                        if len(selected_indices) < n_samples:
+                            selected_indices.append(remaining[i])
+                        else:
+                            break
+                
+                # Get the selected examples
+                examples = [combined_texts[i] for i in selected_indices]
+            else:
+                # If we have fewer texts than requested, use all of them
+                examples = combined_texts
+            
+            self.logger.info(f"Selected {len(examples)} examples from cluster {cluster_id}")
+            return examples
+            
+        except Exception as e:
+            self.logger.error(f"Error selecting representative examples: {str(e)}")
+            return []
+        
+    def generate_enhanced_openai_labels(self, cluster_characteristics, perspective_name):
+        """
+        Generates high-quality cluster labels using OpenAI with enhanced prompts.
+        
+        This method creates detailed prompts that provide rich context about each cluster,
+        then uses OpenAI's API to generate meaningful, descriptive labels based on
+        cluster content and characteristics.
+        
+        Args:
+            cluster_characteristics: List of cluster characteristic dictionaries
+                                (from extract_cluster_characteristics)
+            perspective_name: Name of the clustering perspective (e.g., "Content Categories")
+            
+        Returns:
+            Dictionary mapping cluster IDs to generated labels
+        """
+        self.logger.info(f"Generating enhanced OpenAI labels for {perspective_name} clusters")
+        
+        # Check method configuration
+        if self.method != 'openai':
+            self.logger.warning(
+                f"Method is set to '{self.method}', not 'openai'. "
+                f"Switching to OpenAI for enhanced labeling."
+            )
+        
+        # Get OpenAI configuration
+        openai_config = self.labeling_config.get('openai', {})
+        model = openai_config.get('model', 'gpt-3.5-turbo')
+        temperature = openai_config.get('temperature', 0.3)
+        max_tokens = openai_config.get('max_tokens', 500)
+        api_key_env = openai_config.get('api_key_env', 'OPENAI_API_KEY')
+        
+        # Check API key
+        api_key = os.environ.get(api_key_env)
+        if not api_key:
+            self.logger.error(
+                f"OpenAI API key not found in environment variable: {api_key_env}. "
+                f"Falling back to TF-IDF labeling."
+            )
+            # Get cluster IDs and return generic labels
+            cluster_ids = [char['id'] for char in cluster_characteristics if 'id' in char]
+            return {cluster_id: f"Cluster {cluster_id}" for cluster_id in cluster_ids}
+        
+        try:
+            # Create detailed prompt
+            prompt = self.create_detailed_naming_prompt(cluster_characteristics, perspective_name)
+            
+            # Save prompt for reference
+            try:
+                prompt_dir = os.path.join(os.getcwd(), "prompts")
+                os.makedirs(prompt_dir, exist_ok=True)
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                prompt_path = os.path.join(prompt_dir, f"{perspective_name}_naming_prompt_{timestamp}.txt")
+                with open(prompt_path, 'w', encoding='utf-8') as f:
+                    f.write(prompt)
+                self.logger.info(f"Saved naming prompt to: {prompt_path}")
+            except Exception as e:
+                self.logger.warning(f"Failed to save prompt: {str(e)}")
+            
+            # Call OpenAI API
+            import openai
+            openai.api_key = api_key
+            
+            response = openai.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are an expert in educational content classification with deep knowledge of learning materials and instructional design."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            
+            # Extract response text
+            response_text = response.choices[0].message.content.strip()
+            
+            # Save response for reference
+            try:
+                response_dir = os.path.join(os.getcwd(), "responses")
+                os.makedirs(response_dir, exist_ok=True)
+                response_path = os.path.join(response_dir, f"{perspective_name}_naming_response_{timestamp}.txt")
+                with open(response_path, 'w', encoding='utf-8') as f:
+                    f.write(response_text)
+                self.logger.info(f"Saved naming response to: {response_path}")
+            except Exception as e:
+                self.logger.warning(f"Failed to save response: {str(e)}")
+            
+            # Parse response to extract cluster names
+            labels = {}
+            try:
+                # First try JSON parsing
+                import json
+                
+                # Find JSON in the response
+                start_idx = response_text.find('{')
+                end_idx = response_text.rfind('}') + 1
+                
+                if start_idx >= 0 and end_idx > start_idx:
+                    json_str = response_text[start_idx:end_idx]
+                    names_data = json.loads(json_str)
+                    names = names_data.get('cluster_names', [])
+                    
+                    # Map names to cluster IDs
+                    for i, char in enumerate(cluster_characteristics):
+                        if 'id' in char and i < len(names):
+                            labels[char['id']] = names[i]
+                    
+                    if labels:
+                        self.logger.info(f"Successfully parsed {len(labels)} cluster names from JSON response")
+                        return labels
+                
+                # Fallback: Try line-by-line parsing
+                self.logger.warning("JSON parsing failed, trying line-by-line extraction")
+                names = []
+                lines = response_text.split('\n')
+                
+                for line in lines:
+                    line = line.strip()
+                    if line and (line.startswith('"') or line.startswith('-') or line.startswith('*')):
+                        # Extract name from line
+                        name = line.lstrip('"-* ').strip().strip('"').strip(',').strip()
+                        if name and len(name) > 0:
+                            names.append(name)
+                
+                # Map names to cluster IDs
+                for i, char in enumerate(cluster_characteristics):
+                    if 'id' in char and i < len(names):
+                        labels[char['id']] = names[i]
+                
+                if labels:
+                    self.logger.info(f"Extracted {len(labels)} cluster names via line parsing")
+                    return labels
+                
+                # If we still can't parse, use generic labels
+                raise ValueError("Failed to parse cluster names from response")
+                
+            except Exception as e:
+                self.logger.error(f"Error parsing cluster names: {str(e)}")
+                # Fallback to generic names
+                for char in cluster_characteristics:
+                    if 'id' in char:
+                        labels[char['id']] = f"{perspective_name} Cluster {char['id']}"
+                return labels
+                
+        except Exception as e:
+            self.logger.error(f"Error generating enhanced OpenAI labels: {str(e)}")
+            # Fallback to generic names
+            labels = {}
+            for char in cluster_characteristics:
+                if 'id' in char:
+                    labels[char['id']] = f"{perspective_name} Cluster {char['id']}"
+            return labels         
+        
 
 class ClassifierManager:
     """Manager for the classification process."""
@@ -1046,8 +1462,46 @@ class ClassifierManager:
             result_df[output_column] = cluster_assignments
             
             # Add cluster labels if configured
-            if self.config.get_config_value('cluster_labeling.method', 'tfidf') != 'none':
-                # Pasar el DataFrame de pandas al método de etiquetado
+            if self.config.get_config_value('cluster_analysis.enabled', True):
+                # Extract characteristics for enhanced analysis
+                cluster_characteristics = []
+                for cluster_id in np.unique(cluster_assignments):
+                    # Skip noise points (-1) if present
+                    if cluster_id == -1:
+                        continue
+                    
+                    # Get characteristics for this cluster
+                    characteristics = self.cluster_labeler.extract_cluster_characteristics(
+                        result_df, 
+                        text_columns, 
+                        output_column, 
+                        cluster_id,
+                        vectorizer=None  # We don't have the vectorizer here
+                    )
+                    cluster_characteristics.append(characteristics)
+                
+                # Store characteristics for this perspective
+                self.logger.info(f"Extracted characteristics for {len(cluster_characteristics)} clusters")
+                
+                # Add to DataFrame for tracking
+                result_df.attrs['cluster_characteristics'] = cluster_characteristics
+                
+                # Use enhanced OpenAI naming if configured
+                if (self.config.get_config_value('cluster_analysis.enhanced_naming', True) and 
+                    self.config.get_config_value('cluster_labeling.method', 'tfidf') == 'openai'):
+                    self.logger.info("Using enhanced OpenAI cluster naming")
+                    cluster_labels = self.cluster_labeler.generate_enhanced_openai_labels(
+                        cluster_characteristics,
+                        perspective_name
+                    )
+                    # Add labels to result DataFrame
+                    label_column = f"{output_column}_label"
+                    result_df[label_column] = result_df[output_column].map(cluster_labels)
+                else:
+                    # Use standard labeling approach
+                    result_df = self.add_cluster_labels(result_df, perspective_config)
+            else:
+                # Use standard labeling approach
                 result_df = self.add_cluster_labels(result_df, perspective_config)
             
             self.logger.info(f"Completed {perspective_name} classification perspective")
@@ -1060,6 +1514,7 @@ class ClassifierManager:
             except Exception:
                 self.logger.error("Error getting traceback")
             raise RuntimeError(f"Failed to apply perspective {perspective_name}: {str(e)}")
+    
     def create_clusterer(self, algorithm, perspective_config):
         """
         Creates a clusterer based on the algorithm name.
