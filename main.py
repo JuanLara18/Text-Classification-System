@@ -106,6 +106,167 @@ class ClassificationPipeline:
                 print(traceback.format_exc())
             return False
         
+    def verify_environment(self):
+        """
+        Verifica que todas las condiciones necesarias se cumplan antes 
+        de iniciar el procesamiento principal.
+        
+        Returns:
+            bool: True si todas las verificaciones pasan, False en caso contrario
+        """
+        self.logger.info("Starting environment verification...")
+        all_checks_passed = True
+        verification_results = {}
+        
+        # 1. Verificar archivos de entrada/salida
+        try:
+            input_file = self.config.get_input_file_path()
+            if not os.path.exists(input_file):
+                verification_results["input_file"] = f"ERROR: Input file not found: {input_file}"
+                all_checks_passed = False
+            else:
+                verification_results["input_file"] = f"SUCCESS: Input file verified: {input_file}"
+                
+            output_dir = os.path.dirname(self.config.get_output_file_path())
+            if not os.path.exists(output_dir):
+                try:
+                    os.makedirs(output_dir, exist_ok=True)
+                    verification_results["output_directory"] = f"INFO: Output directory created: {output_dir}"
+                except:
+                    verification_results["output_directory"] = f"ERROR: Cannot create output directory: {output_dir}"
+                    all_checks_passed = False
+            else:
+                verification_results["output_directory"] = f"SUCCESS: Output directory verified: {output_dir}"
+                
+            results_dir = self.config.get_results_dir()
+            if not os.path.exists(results_dir):
+                try:
+                    os.makedirs(results_dir, exist_ok=True)
+                    verification_results["results_directory"] = f"INFO: Results directory created: {results_dir}"
+                except:
+                    verification_results["results_directory"] = f"ERROR: Cannot create results directory: {results_dir}"
+                    all_checks_passed = False
+            else:
+                verification_results["results_directory"] = f"SUCCESS: Results directory verified: {results_dir}"
+        except Exception as e:
+            verification_results["file_paths"] = f"ERROR: Failed to verify file paths: {str(e)}"
+            all_checks_passed = False
+        
+        # 2. Verificar credenciales API (solo si se usa OpenAI)
+        try:
+            labeling_method = self.config.get_config_value('cluster_labeling.method', 'tfidf')
+            if labeling_method == 'openai':
+                api_key_env = self.config.get_config_value('cluster_labeling.openai.api_key_env', 'OPENAI_API_KEY')
+                api_key = os.environ.get(api_key_env, '')
+                
+                if not api_key:
+                    verification_results["openai_api"] = f"WARNING: OpenAI API key not found in environment variable: {api_key_env}"
+                    verification_results["openai_fallback"] = "INFO: Will fall back to TF-IDF for cluster labeling"
+                elif not api_key.startswith('sk-'):
+                    verification_results["openai_api"] = f"WARNING: Invalid OpenAI API key format in {api_key_env}"
+                    verification_results["openai_fallback"] = "INFO: Will fall back to TF-IDF for cluster labeling"
+                else:
+                    # Verificar conexión a la API
+                    import openai
+                    openai.api_key = api_key
+                    try:
+                        # Solo hacer una llamada liviana para verificar
+                        response = openai.models.list(limit=1)
+                        verification_results["openai_api"] = "SUCCESS: OpenAI API key verified and working"
+                    except Exception as e:
+                        verification_results["openai_api"] = f"WARNING: OpenAI API key verification failed: {str(e)}"
+                        verification_results["openai_fallback"] = "INFO: Will fall back to TF-IDF for cluster labeling"
+            else:
+                verification_results["openai_api"] = f"INFO: OpenAI API not required (using {labeling_method} method)"
+        except Exception as e:
+            verification_results["openai_api"] = f"ERROR: Failed to verify OpenAI API: {str(e)}"
+            # No se considera crítico, por lo que no cambiamos all_checks_passed
+        
+        # 3. Verificar configuración de clustering perspectivas
+        try:
+            perspectives = self.config.get_clustering_perspectives()
+            if not perspectives:
+                verification_results["clustering_perspectives"] = "ERROR: No clustering perspectives found in configuration"
+                all_checks_passed = False
+            else:
+                perspective_issues = []
+                for name, config in perspectives.items():
+                    if 'algorithm' not in config:
+                        perspective_issues.append(f"Missing 'algorithm' in '{name}'")
+                    elif config['algorithm'] == 'hdbscan':
+                        # Verificar parámetros de HDBSCAN
+                        params = config.get('params', {})
+                        min_cluster_size = params.get('min_cluster_size', 0)
+                        if min_cluster_size < 25:
+                            perspective_issues.append(f"Low min_cluster_size ({min_cluster_size}) in '{name}' may cause excessive fragmentation")
+                            
+                if perspective_issues:
+                    verification_results["clustering_perspectives"] = f"WARNING: Issues with clustering perspectives: {', '.join(perspective_issues)}"
+                else:
+                    verification_results["clustering_perspectives"] = f"SUCCESS: {len(perspectives)} clustering perspectives configured correctly"
+        except Exception as e:
+            verification_results["clustering_perspectives"] = f"ERROR: Failed to verify clustering perspectives: {str(e)}"
+            all_checks_passed = False
+        
+        # 4. Verificar dependencias críticas
+        try:
+            import hdbscan
+            import umap
+            import sklearn
+            verification_results["dependencies"] = "SUCCESS: All critical dependencies available"
+        except ImportError as e:
+            verification_results["dependencies"] = f"ERROR: Missing critical dependency: {str(e)}"
+            all_checks_passed = False
+        
+        # 5. Verificar configuración de Spark
+        try:
+            # Intentar crear una sesión de Spark para verificar
+            spark = self.spark_manager.get_or_create_session()
+            spark_version = spark.version
+            verification_results["spark"] = f"SUCCESS: Spark session created successfully (version {spark_version})"
+        except Exception as e:
+            verification_results["spark"] = f"ERROR: Failed to create Spark session: {str(e)}"
+            all_checks_passed = False
+        
+        # 6. Probar carga básica de datos para verificar que el formato está soportado
+        try:
+            input_file = self.config.get_input_file_path()
+            # Solo verificar que podemos leer el archivo, sin cargarlo completamente
+            sample_size = 10  # Solo intentar leer algunas filas
+            pd_sample = pd.read_stata(input_file, convert_categoricals=False, nrows=sample_size)
+            verification_results["data_loading"] = f"SUCCESS: Successfully tested data loading from {input_file}"
+            
+            # Verificar que las columnas de texto necesarias existen
+            text_columns = self.config.get_text_columns()
+            missing_columns = [col for col in text_columns if col not in pd_sample.columns]
+            if missing_columns:
+                verification_results["text_columns"] = f"ERROR: Missing required text columns: {', '.join(missing_columns)}"
+                all_checks_passed = False
+            else:
+                verification_results["text_columns"] = f"SUCCESS: All required text columns present in dataset"
+        except Exception as e:
+            verification_results["data_loading"] = f"ERROR: Failed to test data loading: {str(e)}"
+            all_checks_passed = False
+        
+        # Mostrar resultados de verificación
+        self.logger.info("=== ENVIRONMENT VERIFICATION RESULTS ===")
+        for check, result in verification_results.items():
+            if result.startswith("ERROR"):
+                self.logger.error(result)
+            elif result.startswith("WARNING"):
+                self.logger.warning(result)
+            else:
+                self.logger.info(result)
+        self.logger.info("=======================================")
+        
+        # Resultado final
+        if all_checks_passed:
+            self.logger.info("All critical checks PASSED. Environment is ready for processing.")
+        else:
+            self.logger.error("Some critical checks FAILED. Please resolve the issues before proceeding.")
+        
+        return all_checks_passed
+        
     def run(self):
         """
         Executes the complete classification pipeline.
@@ -125,6 +286,13 @@ class ClassificationPipeline:
         try:
             self.logger.info("Starting classification pipeline execution")
             self.performance_monitor.start_timer('total_pipeline')
+            
+            # Verification
+            self.logger.info("Performing initial environment verification")
+            environment_valid = self.verify_environment()
+            if not environment_valid:
+                self.logger.error("Environment verification failed, aborting pipeline")
+                return False
             
             # Agregar manejo de excepciones específicas para Spark
             max_retries = 3
