@@ -37,6 +37,11 @@ try:
     nltk.data.find('tokenizers/punkt')
 except LookupError:
     nltk.download('punkt')
+    
+try:
+    nltk.data.find('tokenizers/punkt_tab/english')
+except LookupError:
+    nltk.download('punkt')
 
 try:
     nltk.data.find('corpora/stopwords')
