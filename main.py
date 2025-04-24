@@ -435,10 +435,21 @@ class ClassificationPipeline:
             return None, None, None
 
     def evaluate_and_report(self, dataframe, features_dict, cluster_assignments_dict):
+        """
+        Evaluates clustering results for each perspective and generates associated reports and visualizations.
+
+        Args:
+            dataframe: The original DataFrame containing metadata and results.
+            features_dict: Dictionary mapping perspective names to their feature matrices.
+            cluster_assignments_dict: Dictionary mapping perspective names to cluster labels.
+
+        Returns:
+            Dictionary containing evaluation metrics, visualization paths, and report paths for each perspective.
+        """
         try:
             self.logger.info("Evaluating clustering results and generating reports")
             
-            # Check if we have a checkpoint
+            # Check for existing evaluation checkpoint
             if self.checkpoint_manager.checkpoint_exists('evaluation_results'):
                 self.logger.info("Found checkpoint for evaluation results, attempting to load")
                 evaluation_results = self.checkpoint_manager.load_checkpoint('evaluation_results')
@@ -455,28 +466,27 @@ class ClassificationPipeline:
             
             self.logger.info(f"Generating visualizations: {', '.join(visualization_types)}")
             
-            # Get clustering perspectives from configuration
+            # Retrieve clustering perspectives
             perspectives = self.config.get_clustering_perspectives()
             
-            # Dictionary to store evaluation results
+            # Dictionary to store all evaluation outputs
             evaluation_results = {}
             
             # Initialize ClusterAnalyzer
-            cluster_analyzer = ClusterAnalyzer(self.config, self.logger)            
+            cluster_analyzer = ClusterAnalyzer(self.config, self.logger)
             
-            # Evaluate each perspective
+            # Evaluate each clustering perspective
             for perspective_name in cluster_assignments_dict.keys():
                 self.logger.info(f"Evaluating perspective: {perspective_name}")
                 self.performance_monitor.start_timer(f'evaluate_{perspective_name}')
                 
-                # Initialize result dictionary for this perspective
+                # Initialize entry in evaluation results
                 evaluation_results[perspective_name] = {
                     'metrics': {},
                     'visualization_paths': {},
                     'report_paths': {}
                 }
                 
-                # Skip if features or assignments are missing
                 combined_key = f"{perspective_name}_combined"
                 if combined_key not in features_dict or perspective_name not in cluster_assignments_dict:
                     self.logger.warning(f"Missing data for perspective {perspective_name}, skipping evaluation")
@@ -486,37 +496,31 @@ class ClassificationPipeline:
                 assignments = cluster_assignments_dict[perspective_name]
                 
                 try:
-                    # Evaluate clustering
+                    # Compute evaluation metrics
                     metrics = self.evaluator.evaluate_clustering(features, assignments)
                     evaluation_results[perspective_name]['metrics'] = metrics
                     
-                    # Initialize visualization_paths
                     visualization_paths = {}
-                    
-                    # Perform enhanced cluster analysis if configured
+
+                    # Perform enhanced cluster analysis if enabled
                     if self.config.get_config_value('cluster_analysis.enabled', True):
                         self.logger.info(f"Performing enhanced cluster analysis for {perspective_name}")
                         
-                        # Extract cluster characteristics if not already present
                         if hasattr(dataframe, 'attrs') and 'cluster_characteristics' in dataframe.attrs:
                             characteristics = dataframe.attrs['cluster_characteristics']
                             self.logger.info(f"Using {len(characteristics)} stored cluster characteristics")
                         else:
-                            # Analyze cluster content
                             characteristics = cluster_analyzer.analyze_cluster_content(
                                 features, vectorizer=None, cluster_assignments=assignments, k=len(np.unique(assignments))
                             )
-                        
-                        # Generate cluster summary
+
                         cluster_summary = cluster_analyzer.generate_cluster_summary(characteristics)
                         
-                        # Create additional visualizations
-                        if 'cluster_size_distribution' not in visualization_paths:
-                            # Get cluster names if available
-                            output_column = self.perspectives[perspective_name].get('output_column', f"{perspective_name}_cluster")
+                        try:
+                            output_column = perspectives[perspective_name].get('output_column', f"{perspective_name}_cluster")
                             label_column = f"{output_column}_label"
                             cluster_names = {}
-                            
+
                             if label_column in dataframe.columns:
                                 for cluster_id in np.unique(assignments):
                                     mask = dataframe[output_column] == cluster_id
@@ -524,72 +528,82 @@ class ClassificationPipeline:
                                         names = dataframe.loc[mask, label_column].dropna()
                                         if len(names) > 0:
                                             cluster_names[cluster_id] = names.iloc[0]
-                            
-                            # Create distribution plot
+
                             viz_path = self.visualizer.create_cluster_size_distribution_plot(
                                 assignments, cluster_names, perspective_name
                             )
                             visualization_paths['cluster_size_distribution'] = viz_path
+                        except Exception as e:
+                            self.logger.error(f"Error creating size distribution plot: {str(e)}")
                         
-                        # Create term importance plot if we have characteristics with top terms
-                        if characteristics and 'top_terms' in characteristics[0]:
-                            viz_path = self.visualizer.create_cluster_term_importance_plot(
-                                characteristics, perspective_name
-                            )
-                            visualization_paths['term_importance'] = viz_path
+                        try:
+                            if characteristics and len(characteristics) > 0 and 'top_terms' in characteristics[0]:
+                                viz_path = self.visualizer.create_cluster_term_importance_plot(
+                                    characteristics, perspective_name
+                                )
+                                visualization_paths['term_importance'] = viz_path
+                        except Exception as e:
+                            self.logger.error(f"Error creating term importance plot: {str(e)}")
                         
-                        # Generate detailed cluster report
-                        if self.config.get_config_value('cluster_analysis.create_detailed_reports', True):
-                            report_path = self.reporter.generate_detailed_cluster_report(
-                                perspective_name, characteristics, visualization_paths
-                            )
-                            evaluation_results[perspective_name]['report_paths']['detailed_report'] = report_path                    
+                        try:
+                            if self.config.get_config_value('cluster_analysis.create_detailed_reports', True):
+                                report_path = self.evaluator.generate_detailed_cluster_report(
+                                    perspective_name, characteristics, visualization_paths
+                                )
+                                evaluation_results[perspective_name]['report_paths']['detailed_report'] = report_path
+                        except Exception as e:
+                            self.logger.error(f"Error generating detailed cluster report: {str(e)}")
                     
-                    # Generate standard visualizations
-                    if 'embeddings_plot' in visualization_types:
-                        viz_path = self.visualizer.create_embeddings_plot(features, assignments, perspective_name)
-                        visualization_paths['embeddings_plot'] = viz_path
-                    
-                    if 'silhouette_plot' in visualization_types:
-                        viz_path = self.visualizer.create_silhouette_plot(features, assignments, perspective_name)
-                        visualization_paths['silhouette_plot'] = viz_path
-                    
-                    if 'distribution_plot' in visualization_types:
-                        viz_path = self.visualizer.create_distribution_plot(assignments, perspective_name)
-                        visualization_paths['distribution_plot'] = viz_path
-                    
-                    # Store visualization paths
+                    try:
+                        if 'embeddings_plot' in visualization_types:
+                            viz_path = self.visualizer.create_embeddings_plot(features, assignments, perspective_name)
+                            visualization_paths['embeddings_plot'] = viz_path
+                    except Exception as e:
+                        self.logger.error(f"Error creating embeddings plot: {str(e)}")
+
+                    try:
+                        if 'silhouette_plot' in visualization_types:
+                            viz_path = self.visualizer.create_silhouette_plot(features, assignments, perspective_name)
+                            visualization_paths['silhouette_plot'] = viz_path
+                    except Exception as e:
+                        self.logger.error(f"Error creating silhouette plot: {str(e)}")
+
+                    try:
+                        if 'distribution_plot' in visualization_types:
+                            viz_path = self.visualizer.create_distribution_plot(assignments, perspective_name)
+                            visualization_paths['distribution_plot'] = viz_path
+                    except Exception as e:
+                        self.logger.error(f"Error creating distribution plot: {str(e)}")
+
                     evaluation_results[perspective_name]['visualization_paths'] = visualization_paths
-                    
-                    # Generate report
-                    report_paths = self.reporter.generate_report(perspective_name, metrics, visualization_paths)
-                    evaluation_results[perspective_name]['report_paths'].update(report_paths)
-                    
+
+                    try:
+                        report_paths = self.reporter.generate_report(perspective_name, metrics, visualization_paths)
+                        evaluation_results[perspective_name]['report_paths'].update(report_paths)
+                    except Exception as e:
+                        self.logger.error(f"Error generating reports: {str(e)}")
+
                     self.logger.info(f"Evaluation and reporting completed for perspective {perspective_name}")
-                    
+                
                 except Exception as e:
                     self.logger.error(f"Error evaluating perspective {perspective_name}: {str(e)}")
                     self.logger.error(traceback.format_exc())
-                    # Continue with other perspectives if one fails
                 
                 self.performance_monitor.stop_timer(f'evaluate_{perspective_name}')
             
-            # Check if any perspectives were evaluated successfully
             if not evaluation_results:
                 self.logger.error("No perspectives were evaluated successfully")
                 return None
-            
-            # Save checkpoint
+
             self.checkpoint_manager.save_checkpoint(evaluation_results, 'evaluation_results')
-            
             self.logger.info("Evaluation and reporting completed for all perspectives")
             return evaluation_results
-            
+
         except Exception as e:
             self.logger.error(f"Error during evaluation and reporting: {str(e)}")
             self.logger.error(traceback.format_exc())
             return None
-        
+
     def perform_cross_perspective_analysis(self, dataframe, evaluation_results):
         """
         Performs analysis across different clustering perspectives.

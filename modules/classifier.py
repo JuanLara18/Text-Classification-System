@@ -311,7 +311,7 @@ class KMeansClusterer(BaseClusterer):
 
 
 class HDBSCANClusterer(BaseClusterer):
-    """HDBSCAN clustering algorithm."""
+    """HDBSCAN clustering algorithm with enhanced configuration."""
 
     def __init__(self, config, logger, perspective_config):
         """
@@ -320,15 +320,19 @@ class HDBSCANClusterer(BaseClusterer):
         Args:
             config: Configuration manager
             logger: Logger instance
-            perspective_config: Configuration for this perspective
+            perspective_config: Perspective-specific configuration
         """
         super().__init__(config, logger)
         self.perspective_config = perspective_config
-        
-        # Get HDBSCAN specific parameters
+
+        # Retrieve HDBSCAN-specific parameters
         self.params = perspective_config.get('params', {})
-        self.min_cluster_size = self.params.get('min_cluster_size', 15)
-        self.min_samples = self.params.get('min_samples', 5)
+        self.min_cluster_size = self.params.get('min_cluster_size', 250)  # Increased default value
+        self.min_samples = self.params.get('min_samples', 25)  # Increased default value
+
+        # Set a maximum number of clusters to prevent over-fragmentation
+        self.max_clusters = self.params.get('max_clusters', 50)
+
         metric = self.params.get('metric', 'euclidean')
         if metric == 'cosine':
             self.logger.warning(
@@ -337,18 +341,20 @@ class HDBSCANClusterer(BaseClusterer):
             self.metric = 'euclidean'
         else:
             self.metric = metric
-        self.cluster_selection_epsilon = self.params.get('cluster_selection_epsilon', 0.0)
+
+        self.cluster_selection_epsilon = self.params.get('cluster_selection_epsilon', 0.5)  # Increased
         self.alpha = self.params.get('alpha', 1.0)
-        self.cluster_selection_method = self.params.get('cluster_selection_method', 'eom')  # 'eom' or 'leaf'
-        
+        self.cluster_selection_method = self.params.get('cluster_selection_method', 'leaf')
+
         self.logger.info(
             f"Initialized HDBSCANClusterer with min_cluster_size={self.min_cluster_size}, "
-            f"min_samples={self.min_samples}, metric={self.metric}"
+            f"min_samples={self.min_samples}, metric={self.metric}, "
+            f"max_clusters={self.max_clusters}"
         )
 
     def fit(self, features):
         """
-        Fits the HDBSCAN clustering algorithm to the features.
+        Fits the HDBSCAN clustering algorithm to the given feature matrix with safeguards.
 
         Args:
             features: Feature matrix
@@ -362,7 +368,7 @@ class HDBSCANClusterer(BaseClusterer):
                 f"Fitting HDBSCAN with min_cluster_size={self.min_cluster_size} to "
                 f"{features.shape} feature matrix"
             )
-            
+
             # Initialize HDBSCAN
             self.model = hdbscan.HDBSCAN(
                 min_cluster_size=self.min_cluster_size,
@@ -371,42 +377,107 @@ class HDBSCANClusterer(BaseClusterer):
                 cluster_selection_epsilon=self.cluster_selection_epsilon,
                 alpha=self.alpha,
                 cluster_selection_method=self.cluster_selection_method,
-                gen_min_span_tree=True,  # Needed for visualization
-                core_dist_n_jobs=-1  # Use all available processors
+                gen_min_span_tree=True,
+                core_dist_n_jobs=-1
             )
-            
+
             # Fit the model
             self.model.fit(features)
-            
-            # Store the labels
+
+            # Store labels
             self.labels_ = self.model.labels_
-            
-            # HDBSCAN doesn't provide cluster centers, but we can compute them
-            unique_labels = np.unique(self.labels_)
-            centers = []
-            for label in unique_labels:
-                if label != -1:  # Ignore noise cluster
-                    mask = self.labels_ == label
-                    center = features[mask].mean(axis=0)
-                    centers.append(center)
-            
-            if centers:
-                self.cluster_centers_ = np.vstack(centers)
-            
-            # Process noise points if requested
+
+            # Count unique clusters (excluding noise)
+            unique_clusters = set(label for label in np.unique(self.labels_) if label != -1)
+            n_clusters = len(unique_clusters)
+
+            # If too many clusters, try increasing min_cluster_size and refit
+            original_min_cluster_size = self.min_cluster_size
+            refits = 0
+            max_refits = 3
+
+            while n_clusters > self.max_clusters and refits < max_refits:
+                refits += 1
+                self.min_cluster_size = int(self.min_cluster_size * 1.5)
+                self.logger.warning(
+                    f"Too many clusters ({n_clusters}). Increasing min_cluster_size to "
+                    f"{self.min_cluster_size} and refitting (attempt {refits}/{max_refits})"
+                )
+
+                self.model = hdbscan.HDBSCAN(
+                    min_cluster_size=self.min_cluster_size,
+                    min_samples=self.min_samples,
+                    metric=self.metric,
+                    cluster_selection_epsilon=self.cluster_selection_epsilon,
+                    alpha=self.alpha,
+                    cluster_selection_method=self.cluster_selection_method,
+                    gen_min_span_tree=True,
+                    core_dist_n_jobs=-1
+                )
+
+                self.model.fit(features)
+                self.labels_ = self.model.labels_
+                unique_clusters = set(label for label in np.unique(self.labels_) if label != -1)
+                n_clusters = len(unique_clusters)
+
+            if refits > 0:
+                self.logger.info(
+                    f"After {refits} refits, final min_cluster_size={self.min_cluster_size}, "
+                    f"resulting in {n_clusters} clusters"
+                )
+
+            # If still too many clusters, fallback to KMeans
+            if n_clusters > self.max_clusters:
+                self.logger.warning(
+                    f"HDBSCAN produced too many clusters ({n_clusters}). "
+                    f"Falling back to KMeans with {self.max_clusters} clusters"
+                )
+
+                from sklearn.cluster import KMeans
+                kmeans = KMeans(
+                    n_clusters=self.max_clusters,
+                    random_state=self.seed,
+                    n_init=10
+                )
+
+                kmeans.fit(features)
+                self.labels_ = kmeans.labels_
+                self.cluster_centers_ = kmeans.cluster_centers_
+                self.model = kmeans
+
+                self.logger.info(f"Fallback to KMeans completed with {self.max_clusters} clusters")
+            else:
+                # HDBSCAN doesn't provide cluster centers — compute manually
+                unique_labels = np.unique(self.labels_)
+                centers = []
+
+                for label in unique_labels:
+                    if label != -1:  # Ignore noise cluster
+                        mask = self.labels_ == label
+                        center = features[mask].mean(axis=0)
+                        centers.append(center)
+
+                if centers:
+                    self.cluster_centers_ = np.vstack(centers)
+                else:
+                    self.logger.warning("No valid clusters formed. Creating a single artificial cluster.")
+                    self.cluster_centers_ = np.mean(features, axis=0).reshape(1, -1)
+                    self.labels_ = np.zeros(features.shape[0], dtype=int)
+
+            # Handle noise points if required
             if self.params.get('handle_noise_points', True) and -1 in self.labels_:
                 self.labels_ = self._handle_noise_cluster(self.labels_)
-            
-            # Log number of samples in each cluster
+
+            # Log number of samples per cluster
             unique, counts = np.unique(self.labels_, return_counts=True)
             cluster_counts = dict(zip(unique, counts))
             self.logger.info(f"HDBSCAN cluster distribution: {cluster_counts}")
-            
+
             elapsed_time = time.time() - start_time
             self.logger.info(f"HDBSCAN clustering completed in {elapsed_time:.2f} seconds")
-            
+
             return self
-            
+
         except Exception as e:
             self.logger.error(f"Error during HDBSCAN clustering: {str(e)}")
             raise RuntimeError(f"HDBSCAN clustering failed: {str(e)}")
@@ -664,7 +735,7 @@ class ClusterLabeler:
         self.labeling_config = config.get_cluster_labeling_config()
         self.method = self.labeling_config.get('method', 'tfidf')
         
-        # Initialize OpenAI API if needed
+        # Initialize OpenAI API if specified
         if self.method == 'openai':
             openai_config = self.labeling_config.get('openai', {})
             api_key_env = openai_config.get('api_key_env', 'OPENAI_API_KEY')
@@ -676,10 +747,29 @@ class ClusterLabeler:
                     f"Falling back to TF-IDF labeling."
                 )
                 self.method = 'tfidf'
+            elif not api_key.startswith('sk-'):
+                self.logger.warning(
+                    f"Invalid OpenAI API key format in {api_key_env}. "
+                    f"Falling back to TF-IDF labeling."
+                )
+                self.method = 'tfidf'
             else:
+                # Configure API key without validation
+                import openai
                 openai.api_key = api_key
+
+                # Attempt a basic validation call
+                try:
+                    response = openai.models.list(limit=1)
+                    self.logger.info("Successfully validated OpenAI API key")
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to validate OpenAI API key: {str(e)}. "
+                        f"Falling back to TF-IDF labeling."
+                    )
+                    self.method = 'tfidf'
         
-        self.logger.info(f"Initialized ClusterLabeler using {self.method} method")
+        self.logger.info(f"Initialized ClusterLabeler using '{self.method}' method")
 
     def generate_labels(self, dataframe, text_columns, cluster_column):
         """
@@ -1152,85 +1242,128 @@ class ClusterLabeler:
 
     def select_representative_examples(self, dataframe, text_columns, cluster_column, cluster_id, n_samples=5):
         """
-        Selects diverse, representative examples from a cluster.
-        
-        This method attempts to select a diverse set of examples that represent
-        different aspects of a cluster, not just random samples. It prioritizes
-        longer, more content-rich examples when available.
-        
+        Selects diverse representative examples from a cluster, avoiding duplicates.
+
         Args:
             dataframe: DataFrame containing the data
             text_columns: List of text column names to consider
-            cluster_column: Column name containing cluster assignments
-            cluster_id: ID of the cluster to analyze
+            cluster_column: Name of the column with cluster assignments
+            cluster_id: Cluster ID to analyze
             n_samples: Number of examples to select (default: 5)
-            
+
         Returns:
-            List of example texts from the cluster
+            List of representative text examples from the cluster
         """
         self.logger.info(f"Selecting representative examples for cluster {cluster_id}")
-        
+
         try:
             # Create cluster mask
             cluster_mask = dataframe[cluster_column] == cluster_id
             cluster_data = dataframe[cluster_mask]
-            
+
             if len(cluster_data) == 0:
                 self.logger.warning(f"No records found for cluster {cluster_id}")
                 return []
-                
-            # Combine text fields for each example
+
+            # Combine text fields for each row
             combined_texts = []
-            for _, row in cluster_data.iterrows():
+            indices = []
+
+            for idx, row in cluster_data.iterrows():
                 combined_text = ' '.join([str(row[col]) for col in text_columns if pd.notna(row[col])])
-                if combined_text.strip():  # Only add non-empty texts
+                if combined_text.strip():  # Only include non-empty texts
                     combined_texts.append(combined_text)
-            
+                    indices.append(idx)
+
             if not combined_texts:
                 self.logger.warning(f"No text content found in cluster {cluster_id}")
                 return []
-            
-            # Determine text lengths
-            text_lengths = [len(text) for text in combined_texts]
-            
-            # If we have more texts than requested samples, select strategically
+
+            # Compute text lengths
+            text_lengths = np.array([len(text) for text in combined_texts])
+            selected_examples = []
+
+            # Strategic selection if there are more texts than required
             if len(combined_texts) > n_samples:
-                # Get indices sorted by text length (descending)
-                sorted_indices = sorted(range(len(text_lengths)), key=lambda i: text_lengths[i], reverse=True)
-                
-                # Take some from the longest and some diversity 
-                # (here taking top 60% longest and 40% from different parts)
-                top_count = int(n_samples * 0.6)
-                diversity_count = n_samples - top_count
-                
-                # Get longest texts
-                selected_indices = sorted_indices[:top_count]
-                
-                # Add some diverse selections from different parts of the length distribution
-                if diversity_count > 0 and len(sorted_indices) > top_count:
-                    remaining = sorted_indices[top_count:]
-                    
-                    # Get evenly spaced indices from remaining
-                    step = max(1, len(remaining) // diversity_count)
-                    for i in range(0, len(remaining), step):
-                        if len(selected_indices) < n_samples:
-                            selected_indices.append(remaining[i])
-                        else:
+                try:
+                    from sklearn.feature_extraction.text import TfidfVectorizer
+                    vectorizer = TfidfVectorizer(max_features=100, stop_words='english')
+
+                    if len(combined_texts) == 1:
+                        return combined_texts
+
+                    text_vectors = vectorizer.fit_transform(combined_texts)
+
+                    # Normalize lengths for scoring
+                    length_scores = text_lengths / np.max(text_lengths) if np.max(text_lengths) > 0 else np.ones_like(text_lengths)
+
+                    # Start with the longest text
+                    selected_indices = [np.argmax(text_lengths)]
+                    selected_examples = [combined_texts[selected_indices[0]]]
+
+                    # Compute similarity matrix
+                    from sklearn.metrics.pairwise import cosine_similarity
+                    similarity_matrix = cosine_similarity(text_vectors)
+
+                    # Select diverse examples based on minimal similarity
+                    while len(selected_indices) < min(n_samples, len(combined_texts)):
+                        avg_similarities = np.zeros(len(combined_texts))
+                        for i in range(len(combined_texts)):
+                            if i in selected_indices:
+                                avg_similarities[i] = float('inf')
+                            else:
+                                similarities = [similarity_matrix[i, j] for j in selected_indices]
+                                avg_similarities[i] = np.mean(similarities)
+
+                        # Scoring: 70% diversity (1 - similarity), 30% length
+                        scores = 0.7 * (1 - avg_similarities) + 0.3 * length_scores
+                        next_idx = np.argmax(scores)
+
+                        if scores[next_idx] <= 0.3:
                             break
-                
-                # Get the selected examples
-                examples = [combined_texts[i] for i in selected_indices]
+
+                        selected_indices.append(next_idx)
+                        selected_examples.append(combined_texts[next_idx])
+
+                except Exception as e:
+                    self.logger.warning(f"Error in similarity-based selection: {str(e)}. Falling back to length-based selection.")
+
+                    sorted_indices = sorted(range(len(text_lengths)), key=lambda i: text_lengths[i], reverse=True)
+                    top_count = int(n_samples * 0.6)
+                    diversity_count = n_samples - top_count
+
+                    selected_indices = sorted_indices[:top_count]
+                    if diversity_count > 0 and len(sorted_indices) > top_count:
+                        remaining = sorted_indices[top_count:]
+                        step = max(1, len(remaining) // diversity_count)
+                        for i in range(0, len(remaining), step):
+                            if len(selected_indices) < n_samples:
+                                selected_indices.append(remaining[i])
+                            else:
+                                break
+
+                    selected_examples = [combined_texts[i] for i in selected_indices]
             else:
-                # If we have fewer texts than requested, use all of them
-                examples = combined_texts
-            
-            self.logger.info(f"Selected {len(examples)} examples from cluster {cluster_id}")
-            return examples
-            
+                selected_examples = combined_texts
+
+            # Ensure all examples are unique
+            unique_examples = []
+            seen_signatures = set()
+
+            for ex in selected_examples:
+                signature = ex[:100].strip()
+                if signature not in seen_signatures:
+                    seen_signatures.add(signature)
+                    unique_examples.append(ex)
+
+            self.logger.info(f"Selected {len(unique_examples)} unique examples from cluster {cluster_id}")
+            return unique_examples
+
         except Exception as e:
             self.logger.error(f"Error selecting representative examples: {str(e)}")
+            self.logger.error(traceback.format_exc())
             return []
-        
+
     def generate_enhanced_openai_labels(self, cluster_characteristics, perspective_name):
         """
         Generates high-quality cluster labels using OpenAI with enhanced prompts.

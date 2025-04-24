@@ -72,10 +72,10 @@ class DataProcessor:
     
     def load_data(self, file_path=None):
         """
-        Loads data from a Stata file.
+        Loads data from a Stata file and handles duplicate entries.
 
         Args:
-            file_path: Optional path that overrides the configuration
+            file_path: Optional path to override the default input file.
 
         Returns:
             Loaded DataFrame (PySpark DataFrame)
@@ -88,23 +88,30 @@ class DataProcessor:
             raise FileNotFoundError(f"File not found: {filepath}")
         
         try:
-            # Get Spark session
+            # Obtain Spark session
             spark = self.spark_manager.get_or_create_session()
             
-            # Load the Stata file into pandas first
-            # Using pandas as an intermediate step helps preserve metadata
+            # Load the Stata file into a pandas DataFrame first
             pd_df = pd.read_stata(filepath, convert_categoricals=False)
             
             # Log basic dataset information
             self.logger.info(f"Loaded dataset with {pd_df.shape[0]} rows and {pd_df.shape[1]} columns")
             
+            # Check for and remove exact duplicates
+            initial_rows = pd_df.shape[0]
+            pd_df = pd_df.drop_duplicates()
+            deduped_rows = pd_df.shape[0]
+            
+            if initial_rows > deduped_rows:
+                self.logger.info(f"Removed {initial_rows - deduped_rows} exact duplicate rows")
+            
             # Convert pandas DataFrame to Spark DataFrame
             spark_df = spark.createDataFrame(pd_df)
             
-            # Cache the dataframe for better performance in subsequent operations
+            # Cache the DataFrame for better performance
             spark_df = spark_df.cache()
             
-            # Trigger an action to cache the data
+            # Trigger an action to materialize the cache
             row_count = spark_df.count()
             self.logger.info(f"Successfully loaded {row_count} rows into Spark DataFrame")
             
@@ -113,7 +120,7 @@ class DataProcessor:
         except Exception as e:
             self.logger.error(f"Error loading data: {str(e)}")
             raise RuntimeError(f"Failed to load data: {str(e)}")
-    
+
     def save_data(self, dataframe, file_path=None):
         """
         Saves data to a Stata file.
@@ -298,62 +305,70 @@ class TextPreprocessor:
     
     def preprocess_text(self, text):
         """
-        Preprocesses a text.
+        Preprocesses a text string with enhanced handling.
 
         Args:
             text: Text to preprocess
 
         Returns:
-            Preprocessed text
+            Preprocessed text as a string
         """
         # Handle None/NaN values
         if text is None or pd.isna(text) or not isinstance(text, str):
             return ""
         
-        # Truncate text if too long
+        # Truncate text if it's too long
         if self.max_length > 0 and len(text) > self.max_length:
             text = text[:self.max_length]
         
-        # Convert to lowercase if configured
+        # Convert to lowercase if enabled
         if self.preprocessing_options.get('lowercase', True):
             text = text.lower()
         
+        # Remove URLs
+        text = re.sub(r'https?://\S+|www\.\S+', ' ', text)
+        
+        # Remove email addresses
+        text = re.sub(r'\S+@\S+', ' ', text)
+        
+        # Remove file paths
+        text = re.sub(r'[a-zA-Z]:\\[\\\S|*\S]?.*', ' ', text)
+        
         # Tokenize text
-        #tokens = word_tokenize(text)
-        tokens = text.split()
+        tokens = word_tokenize(text)
 
-        # Process tokens
+        # Process each token
         processed_tokens = []
         for token in tokens:
             # Skip short words
             if len(token) < self.min_word_length:
                 continue
             
-            # Remove punctuation if configured
+            # Remove punctuation if enabled
             if self.preprocessing_options.get('remove_punctuation', True):
                 if all(char in self.punctuation for char in token):
                     continue
                 token = ''.join(char for char in token if char not in self.punctuation)
                 
-                # Skip if token became too short after punctuation removal
+                # Skip if token is too short after removing punctuation
                 if len(token) < self.min_word_length:
                     continue
             
-            # Remove stopwords if configured
+            # Remove stopwords if enabled
             if self.preprocessing_options.get('remove_stopwords', True) and token in self.stopwords:
                 continue
             
-            # Apply lemmatization if configured
+            # Apply lemmatization if enabled
             if self.preprocessing_options.get('lemmatize', False) and self.lemmatizer:
                 token = self.lemmatizer.lemmatize(token)
             
             processed_tokens.append(token)
         
-        # Join tokens back into text
+        # Reconstruct text from tokens
         preprocessed_text = ' '.join(processed_tokens)
         
         return preprocessed_text
-    
+
     def preprocess_column(self, dataframe, column_name):
         """
         Preprocesses a text column in a DataFrame.
@@ -619,65 +634,73 @@ class FeatureExtractor:
         except Exception as e:
             self.logger.error(f"Error extracting Sentence Transformer embeddings: {str(e)}")
             raise RuntimeError(f"Failed to extract Sentence Transformer embeddings: {str(e)}")
-    
+        
     def reduce_dimensionality(self, feature_matrix):
         """
-        Reduces the dimensionality of a feature matrix.
+        Reduces the dimensionality of a feature matrix using enhanced parameters.
 
         Args:
-            feature_matrix: Feature matrix (numpy array or scipy sparse matrix)
+            feature_matrix: Feature matrix (NumPy array or SciPy sparse matrix)
 
         Returns:
-            Reduced feature matrix (numpy array)
+            Reduced feature matrix (NumPy array)
         """
         dim_reduction_config = self.feature_config.get('embedding', {}).get('dimensionality_reduction', {})
         method = dim_reduction_config.get('method', 'umap')
         n_components = dim_reduction_config.get('n_components', 50)
         random_state = dim_reduction_config.get('random_state', 42)
-        
+
         self.logger.info(
             f"Reducing dimensionality from {feature_matrix.shape[1]} to {n_components} "
             f"using {method}"
         )
-        
+
         try:
             if method == 'umap':
-                # Get UMAP specific parameters from config
-                n_neighbors = dim_reduction_config.get('n_neighbors', 15)
-                min_dist = dim_reduction_config.get('min_dist', 0.1)
-                metric = dim_reduction_config.get('metric', 'cosine')
-                
-                # Create and apply UMAP reducer with improved parameters
+                # UMAP with tuned parameters for better cluster separation
                 reducer = umap.UMAP(
                     n_components=n_components,
                     random_state=random_state,
-                    n_neighbors=n_neighbors,
-                    min_dist=min_dist,
-                    metric=metric,
-                    low_memory=True,
-                    verbose=True
+                    n_neighbors=30,        # Balance between local and global structure
+                    min_dist=0.1,          # Tighter clusters
+                    metric='cosine',       # Better suited for text embeddings
+                    low_memory=True,       # Enable low memory mode
+                    verbose=True,          # Show progress
+                    spread=0.8,            # Controls point dispersion
+                    densmap=True,          # Preserves local density
+                    n_epochs=500           # More training epochs for better stability
                 )
                 reduced_features = reducer.fit_transform(feature_matrix)
+
             elif method == 'pca':
-                # PCA reduction using sklearn
+                # PCA reduction using scikit-learn
                 from sklearn.decomposition import PCA
                 reducer = PCA(n_components=n_components, random_state=random_state)
                 reduced_features = reducer.fit_transform(feature_matrix)
+
             elif method == 'tsne':
-                # t-SNE reduction using sklearn
+                # t-SNE reduction using scikit-learn
                 from sklearn.manifold import TSNE
-                reducer = TSNE(n_components=n_components, random_state=random_state)
+                reducer = TSNE(
+                    n_components=n_components,
+                    random_state=random_state,
+                    perplexity=30,
+                    n_iter=1000,
+                    learning_rate=200
+                )
                 reduced_features = reducer.fit_transform(feature_matrix)
+
             else:
                 self.logger.error(f"Unknown dimensionality reduction method: {method}")
                 raise ValueError(f"Unknown dimensionality reduction method: {method}")
-            
+
             self.logger.info(f"Dimensionality reduced to shape: {reduced_features.shape}")
             return reduced_features
-            
+
         except Exception as e:
             self.logger.error(f"Error reducing dimensionality: {str(e)}")
             raise RuntimeError(f"Failed to reduce dimensionality: {str(e)}")
+
     
     def _get_cache_key(self, texts, feature_type):
         """
