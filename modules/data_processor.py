@@ -39,7 +39,6 @@ os.environ["NLTK_DATA"] = nltk_data_path
 nltk.data.path.insert(0, nltk_data_path)
 
 # Download necessary resources to the specified location
-nltk.download('punkt', download_dir=nltk_data_path)
 nltk.download('stopwords', download_dir=nltk_data_path)
 nltk.download('wordnet', download_dir=nltk_data_path)
 
@@ -71,7 +70,7 @@ class DataProcessor:
         self.spark_manager = spark_manager
         self.input_file = config.get_input_file_path()
         self.output_file = config.get_output_file_path()
-        self.text_preprocessor = TextPreprocessor(config)
+        self.text_preprocessor = TextPreprocessor(config, logger)
         self.feature_extractor = FeatureExtractor(config, logger)
         self.logger.info("DataProcessor initialized")
         
@@ -290,15 +289,28 @@ class DataProcessor:
 class TextPreprocessor:
     """Preprocessor for text data."""
 
-    def __init__(self, config):
+    def __init__(self, config, logger=None):
         """
         Initializes the text preprocessor.
 
         Args:
             config: Configuration manager
+            logger: Optional logger instance
         """
         self.config = config
         self.preprocessing_options = config.get_preprocessing_options()
+        
+        # Initialize logger (use a default if none provided)
+        if logger is None:
+            import logging
+            self.logger = logging.getLogger('text_preprocessor')
+            self.logger.setLevel(logging.WARNING)
+            if not self.logger.handlers:
+                handler = logging.StreamHandler()
+                handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+                self.logger.addHandler(handler)
+        else:
+            self.logger = logger
         
         # Initialize preprocessing components
         self.lemmatizer = WordNetLemmatizer() if self.preprocessing_options.get('lemmatize', False) else None
@@ -321,7 +333,7 @@ class TextPreprocessor:
         
         # Punctuation to remove
         self.punctuation = set(string.punctuation)
-    
+        
     def preprocess_text(self, text):
         """
         Preprocesses a text string with enhanced error handling.
@@ -350,14 +362,13 @@ class TextPreprocessor:
             text = re.sub(r'\S+@\S+', ' ', text)
             text = re.sub(r'[a-zA-Z]:\\[\\\S|*\S]?.*', ' ', text)
             
-            try:
-                # Intentar usar NLTK para tokenización
-                tokens = word_tokenize(text)
-            except Exception as e:
-                # Fallback a tokenización simple en caso de error
-                self.logger.warning(f"Error en NLTK tokenization: {str(e)}. Usando método alternativo.")
-                text = re.sub(r'[^\w\s]', ' ', text)  # Eliminar puntuación
-                tokens = text.split()
+            # Use simple tokenization instead of NLTK to avoid issues
+            # First remove punctuation if enabled
+            if self.preprocessing_options.get('remove_punctuation', True):
+                text = re.sub(r'[^\w\s]', ' ', text)
+            
+            # Simple whitespace tokenization
+            tokens = text.split()
             
             # Process each token
             processed_tokens = []
@@ -365,16 +376,6 @@ class TextPreprocessor:
                 # Skip short words
                 if len(token) < self.min_word_length:
                     continue
-                
-                # Remove punctuation if enabled
-                if self.preprocessing_options.get('remove_punctuation', True):
-                    if all(char in self.punctuation for char in token):
-                        continue
-                    token = ''.join(char for char in token if char not in self.punctuation)
-                    
-                    # Skip if token is too short after removing punctuation
-                    if len(token) < self.min_word_length:
-                        continue
                 
                 # Remove stopwords if enabled
                 if self.preprocessing_options.get('remove_stopwords', True) and token in self.stopwords:
@@ -397,9 +398,10 @@ class TextPreprocessor:
         
         except Exception as e:
             # En caso de cualquier error, devolver una cadena vacía o texto original
-            self.logger.error(f"Error preprocessing text: {str(e)}")
+            if hasattr(self, 'logger'):
+                self.logger.error(f"Error preprocessing text: {str(e)}")
             return ""  # O podrías retornar el texto original: return text
-        
+    
     def preprocess_column(self, dataframe, column_name):
         """
         Preprocesses a text column in a DataFrame.
@@ -427,6 +429,28 @@ class TextPreprocessor:
             dataframe[f"{column_name}_preprocessed"] = dataframe[column_name].apply(self.preprocess_text)
             return dataframe
 
+    def safe_log(self, level, message):
+        """
+        Safely logs a message, handling cases where logger might not be present.
+        
+        Args:
+            level: Log level ('info', 'warning', 'error', 'debug')
+            message: Message to log
+        """
+        if not hasattr(self, 'logger'):
+            print(f"[{level.upper()}] {message}")
+            return
+            
+        if level.lower() == 'info':
+            self.logger.info(message)
+        elif level.lower() == 'warning':
+            self.logger.warning(message)
+        elif level.lower() == 'error':
+            self.logger.error(message)
+        elif level.lower() == 'debug':
+            self.logger.debug(message)
+        else:
+            print(f"[{level.upper()}] {message}")
 
 class FeatureExtractor:
     """Feature extractor for texts."""
