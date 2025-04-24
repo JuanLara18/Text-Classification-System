@@ -88,11 +88,24 @@ class ClassificationPipeline:
             self.logger.info(f"Input file: {self.config.get_input_file_path()}")
             self.logger.info(f"Output file: {self.config.get_output_file_path()}")
             self.logger.info(f"Results directory: {results_dir}")
-        
+            
+            # Inicializar los componentes
+            self.initialize_components()
+            
+            self.initialized = True
+            self.performance_monitor.stop_timer('setup')
+            
+            return True
+            
         except Exception as e:
-            self.logger.error(f"Error during setup execution: {str(e)}")
-
-
+            if self.logger:
+                self.logger.error(f"Error during setup: {str(e)}")
+                self.logger.error(traceback.format_exc())
+            else:
+                print(f"Error during setup: {str(e)}")
+                print(traceback.format_exc())
+            return False
+        
     def run(self):
         """
         Executes the complete classification pipeline.
@@ -101,7 +114,12 @@ class ClassificationPipeline:
             bool: True if the pipeline ran successfully, False otherwise
         """
         if not self.initialized:
-            if not self.setup():
+            success = self.setup()
+            if not success:
+                if self.logger:
+                    self.logger.error("Pipeline setup failed, aborting")
+                else:
+                    print("Pipeline setup failed, aborting")
                 return False
         
         try:
