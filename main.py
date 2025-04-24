@@ -53,6 +53,7 @@ class ClassificationPipeline:
         self.reporter = None
         self.initialized = False
         self.start_time = datetime.now()
+        self.perspectives = None
 
     def setup(self):
         """Sets up the pipeline components."""
@@ -75,6 +76,9 @@ class ClassificationPipeline:
             # Initialize checkpoint manager
             self.checkpoint_manager = CheckpointManager(self.config)
             
+            # Configurar el atributo perspectives
+            self.perspectives = self.config.get_clustering_perspectives()
+            
             # Ensure directories exist
             results_dir = self.config.get_results_dir()
             FileOperationUtilities.create_directory_if_not_exists(results_dir)
@@ -84,27 +88,10 @@ class ClassificationPipeline:
             self.logger.info(f"Input file: {self.config.get_input_file_path()}")
             self.logger.info(f"Output file: {self.config.get_output_file_path()}")
             self.logger.info(f"Results directory: {results_dir}")
-            
-            # Initialize other components
-            self.initialize_components()
-            
-            # Mark as initialized
-            self.initialized = True
-            
-            self.performance_monitor.stop_timer('setup')
-            self.logger.info(f"Pipeline setup completed in {self.performance_monitor.operation_durations['setup'][-1]:.2f} seconds")
-            
-            return True
-            
+        
         except Exception as e:
-            if hasattr(self, 'logger') and self.logger:
-                self.logger.error(f"Error during pipeline setup: {str(e)}")
-                self.logger.error(traceback.format_exc())
-            else:
-                print(f"Error during pipeline setup: {str(e)}")
-                print(traceback.format_exc())
-            
-            return False
+            self.logger.error(f"Error during setup execution: {str(e)}")
+
 
     def run(self):
         """
@@ -430,17 +417,6 @@ class ClassificationPipeline:
             return None, None, None
 
     def evaluate_and_report(self, dataframe, features_dict, cluster_assignments_dict):
-        """
-        Evaluates clustering results and generates reports.
-
-        Args:
-            dataframe: DataFrame with data and cluster assignments
-            features_dict: Dictionary mapping perspective names to feature matrices
-            cluster_assignments_dict: Dictionary mapping perspective names to cluster assignments
-            
-        Returns:
-            Dictionary of evaluation results by perspective or None if failed
-        """
         try:
             self.logger.info("Evaluating clustering results and generating reports")
             
@@ -487,6 +463,9 @@ class ClassificationPipeline:
                 try:
                     # Evaluate clustering
                     metrics = self.evaluator.evaluate_clustering(features, assignments)
+                    
+                    # Inicializar visualization_paths antes de usarlo
+                    visualization_paths = {}
                     
                     # Perform enhanced cluster analysis if configured
                     if self.config.get_config_value('cluster_analysis.enabled', True):
