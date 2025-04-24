@@ -20,3 +20,4 @@ uvicorn
 nltk
 psutil
 yaml
+kaleido
