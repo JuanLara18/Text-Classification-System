@@ -10,6 +10,7 @@ import psutil
 from pyspark.sql import SparkSession
 from collections import defaultdict
 import glob
+import nltk
 
 
 class Logger:
@@ -164,8 +165,9 @@ class SparkSessionManager:
             # Additional configurations for performance
             builder = builder.config("spark.sql.execution.arrow.pyspark.enabled", "true")
             builder = builder.config("spark.sql.adaptive.enabled", "true")
-            builder = builder.config("spark.driver.extraPythonPath", "/export/home/rcsguest/rcs_jcamacho/nltk_data")
-            builder = builder.config("spark.executor.extraPythonPath", "/export/home/rcsguest/rcs_jcamacho/nltk_data")
+            builder = builder.config("spark.driver.extraPythonPath", nltk.data.path[0])
+            builder = builder.config("spark.executor.extraPythonPath", nltk.data.path[0])
+            
             
             # Create and cache the session
             self.session = builder.getOrCreate()
