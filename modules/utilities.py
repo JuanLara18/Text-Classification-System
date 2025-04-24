@@ -164,6 +164,8 @@ class SparkSessionManager:
             # Additional configurations for performance
             builder = builder.config("spark.sql.execution.arrow.pyspark.enabled", "true")
             builder = builder.config("spark.sql.adaptive.enabled", "true")
+            builder = builder.config("spark.driver.extraPythonPath", "/export/home/rcsguest/rcs_jcamacho/nltk_data")
+            builder = builder.config("spark.executor.extraPythonPath", "/export/home/rcsguest/rcs_jcamacho/nltk_data")
             
             # Create and cache the session
             self.session = builder.getOrCreate()
