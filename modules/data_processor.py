@@ -32,26 +32,26 @@ from pyspark.sql.types import (
     BooleanType
 )
 
-# Initialize NLTK resources
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-    
-try:
-    nltk.data.find('tokenizers/punkt_tab/english')
-except LookupError:
-    nltk.download('punkt')
+# Define an explicit location for NLTK data
+nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
+os.makedirs(nltk_data_path, exist_ok=True)
+os.environ["NLTK_DATA"] = nltk_data_path
+nltk.data.path.insert(0, nltk_data_path)
 
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
+# Download necessary resources to the specified location
+nltk.download('punkt', download_dir=nltk_data_path)
+nltk.download('stopwords', download_dir=nltk_data_path)
+nltk.download('wordnet', download_dir=nltk_data_path)
 
+# Ensure the resources are available
 try:
-    nltk.data.find('corpora/wordnet')
-except LookupError:
-    nltk.download('wordnet')
+    tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
+    stopwords_list = nltk.corpus.stopwords.words('english')
+    lemmatizer = nltk.stem.WordNetLemmatizer()
+except LookupError as e:
+    print(f"Error loading NLTK resources: {e}")
+    print(f"NLTK data paths: {nltk.data.path}")
+
 
 
 class DataProcessor:
@@ -74,16 +74,17 @@ class DataProcessor:
         self.text_preprocessor = TextPreprocessor(config)
         self.feature_extractor = FeatureExtractor(config, logger)
         self.logger.info("DataProcessor initialized")
-    
+        
     def load_data(self, file_path=None):
         """
-        Loads data from a Stata file and handles duplicate entries.
+        Loads data from a Stata file, preprocesses text columns in pandas,
+        and then converts to Spark DataFrame.
 
         Args:
             file_path: Optional path to override the default input file.
 
         Returns:
-            Loaded DataFrame (PySpark DataFrame)
+            Loaded and preprocessed DataFrame (PySpark DataFrame)
         """
         filepath = file_path or self.input_file
         self.logger.info(f"Loading data from {filepath}")
@@ -93,10 +94,8 @@ class DataProcessor:
             raise FileNotFoundError(f"File not found: {filepath}")
         
         try:
-            # Obtain Spark session
-            spark = self.spark_manager.get_or_create_session()
-            
             # Load the Stata file into a pandas DataFrame first
+            self.logger.info("Loading data into pandas DataFrame")
             pd_df = pd.read_stata(filepath, convert_categoricals=False)
             
             # Log basic dataset information
@@ -110,7 +109,24 @@ class DataProcessor:
             if initial_rows > deduped_rows:
                 self.logger.info(f"Removed {initial_rows - deduped_rows} exact duplicate rows")
             
-            # Convert pandas DataFrame to Spark DataFrame
+            # Preprocess text columns in pandas
+            text_columns = self.config.get_text_columns()
+            self.logger.info(f"Preprocessing text columns in pandas: {text_columns}")
+            
+            for column in text_columns:
+                if column not in pd_df.columns:
+                    self.logger.warning(f"Column '{column}' not found in DataFrame, skipping")
+                    continue
+                    
+                self.logger.info(f"Preprocessing column: {column}")
+                pd_df[f"{column}_preprocessed"] = pd_df[column].apply(
+                    self.text_preprocessor.preprocess_text
+                )
+                self.logger.info(f"Completed preprocessing for column: {column}")
+            
+            # Obtain Spark session and convert to Spark DataFrame
+            self.logger.info("Converting preprocessed pandas DataFrame to Spark")
+            spark = self.spark_manager.get_or_create_session()
             spark_df = spark.createDataFrame(pd_df)
             
             # Cache the DataFrame for better performance
@@ -161,44 +177,42 @@ class DataProcessor:
     
     def preprocess_text_columns(self, dataframe, text_columns=None):
         """
-        Preprocesses all text columns in the DataFrame.
+        Verifica si las columnas de texto ya están preprocesadas en el DataFrame.
+        Si no están procesadas y es un DataFrame de pandas, las procesa.
+        Para DataFrames de Spark, asume que ya fueron procesadas durante load_data.
         
         Args:
-            dataframe: DataFrame with text columns
-            text_columns: Optional list of column names to process (default: use config)
+            dataframe: DataFrame con columnas de texto
+            text_columns: Lista opcional de columnas a procesar (default: usar config)
             
         Returns:
-            DataFrame with preprocessed text columns
+            DataFrame con columnas de texto preprocesadas
         """
         columns_to_process = text_columns or self.config.get_text_columns()
-        self.logger.info(f"Preprocessing {len(columns_to_process)} text columns")
+        self.logger.info(f"Verificando preprocesamiento de {len(columns_to_process)} columnas de texto")
         
-        processed_df = dataframe
+        # Si es un DataFrame de Spark, asumimos que ya se ha hecho el preprocesamiento
+        if isinstance(dataframe, SparkDataFrame):
+            # Verificar que las columnas preprocesadas existen
+            for column in columns_to_process:
+                if f"{column}_preprocessed" not in dataframe.columns:
+                    self.logger.warning(f"Columna preprocesada '{column}_preprocessed' no encontrada en Spark DataFrame")
+            return dataframe
         
+        # Para DataFrame de pandas, procesar columnas que no han sido procesadas
+        processed_df = dataframe.copy()
         for column in columns_to_process:
             if column not in dataframe.columns:
-                self.logger.warning(f"Column '{column}' not found in DataFrame, skipping")
+                self.logger.warning(f"Columna '{column}' no encontrada en DataFrame, omitiendo")
                 continue
-            
-            self.logger.info(f"Preprocessing column: {column}")
-            
-            # For Spark DataFrame, use UDF to apply preprocessing
-            if isinstance(dataframe, SparkDataFrame):
-                # Create a UDF (User Defined Function) for preprocessing
-                preprocessor_udf = F.udf(self.text_preprocessor.preprocess_text, StringType())
                 
-                # Apply the UDF to the column
-                processed_df = processed_df.withColumn(
-                    f"{column}_preprocessed", 
-                    preprocessor_udf(F.col(column))
-                )
-            else:
-                # For pandas DataFrame, use apply
-                processed_df[f"{column}_preprocessed"] = processed_df[column].apply(
+            preprocessed_column = f"{column}_preprocessed"
+            if preprocessed_column not in processed_df.columns:
+                self.logger.info(f"Procesando columna: {column}")
+                processed_df[preprocessed_column] = processed_df[column].apply(
                     self.text_preprocessor.preprocess_text
                 )
-            
-            self.logger.info(f"Completed preprocessing for column: {column}")
+                self.logger.info(f"Completado preprocesamiento de columna: {column}")
         
         return processed_df
     
@@ -310,7 +324,7 @@ class TextPreprocessor:
     
     def preprocess_text(self, text):
         """
-        Preprocesses a text string with enhanced handling.
+        Preprocesses a text string with enhanced error handling.
 
         Args:
             text: Text to preprocess
@@ -322,58 +336,70 @@ class TextPreprocessor:
         if text is None or pd.isna(text) or not isinstance(text, str):
             return ""
         
-        # Truncate text if it's too long
-        if self.max_length > 0 and len(text) > self.max_length:
-            text = text[:self.max_length]
-        
-        # Convert to lowercase if enabled
-        if self.preprocessing_options.get('lowercase', True):
-            text = text.lower()
-        
-        # Remove URLs
-        text = re.sub(r'https?://\S+|www\.\S+', ' ', text)
-        
-        # Remove email addresses
-        text = re.sub(r'\S+@\S+', ' ', text)
-        
-        # Remove file paths
-        text = re.sub(r'[a-zA-Z]:\\[\\\S|*\S]?.*', ' ', text)
-        
-        # Tokenize text
-        tokens = word_tokenize(text)
-
-        # Process each token
-        processed_tokens = []
-        for token in tokens:
-            # Skip short words
-            if len(token) < self.min_word_length:
-                continue
+        try:
+            # Truncate text if it's too long
+            if self.max_length > 0 and len(text) > self.max_length:
+                text = text[:self.max_length]
             
-            # Remove punctuation if enabled
-            if self.preprocessing_options.get('remove_punctuation', True):
-                if all(char in self.punctuation for char in token):
-                    continue
-                token = ''.join(char for char in token if char not in self.punctuation)
-                
-                # Skip if token is too short after removing punctuation
+            # Convert to lowercase if enabled
+            if self.preprocessing_options.get('lowercase', True):
+                text = text.lower()
+            
+            # Remove URLs, emails and file paths with simple regex
+            text = re.sub(r'https?://\S+|www\.\S+', ' ', text)
+            text = re.sub(r'\S+@\S+', ' ', text)
+            text = re.sub(r'[a-zA-Z]:\\[\\\S|*\S]?.*', ' ', text)
+            
+            try:
+                # Intentar usar NLTK para tokenización
+                tokens = word_tokenize(text)
+            except Exception as e:
+                # Fallback a tokenización simple en caso de error
+                self.logger.warning(f"Error en NLTK tokenization: {str(e)}. Usando método alternativo.")
+                text = re.sub(r'[^\w\s]', ' ', text)  # Eliminar puntuación
+                tokens = text.split()
+            
+            # Process each token
+            processed_tokens = []
+            for token in tokens:
+                # Skip short words
                 if len(token) < self.min_word_length:
                     continue
+                
+                # Remove punctuation if enabled
+                if self.preprocessing_options.get('remove_punctuation', True):
+                    if all(char in self.punctuation for char in token):
+                        continue
+                    token = ''.join(char for char in token if char not in self.punctuation)
+                    
+                    # Skip if token is too short after removing punctuation
+                    if len(token) < self.min_word_length:
+                        continue
+                
+                # Remove stopwords if enabled
+                if self.preprocessing_options.get('remove_stopwords', True) and token in self.stopwords:
+                    continue
+                
+                # Apply lemmatization if enabled
+                if self.preprocessing_options.get('lemmatize', False) and self.lemmatizer:
+                    try:
+                        token = self.lemmatizer.lemmatize(token)
+                    except Exception:
+                        # Keep original token if lemmatization fails
+                        pass
+                
+                processed_tokens.append(token)
             
-            # Remove stopwords if enabled
-            if self.preprocessing_options.get('remove_stopwords', True) and token in self.stopwords:
-                continue
+            # Reconstruct text from tokens
+            preprocessed_text = ' '.join(processed_tokens)
             
-            # Apply lemmatization if enabled
-            if self.preprocessing_options.get('lemmatize', False) and self.lemmatizer:
-                token = self.lemmatizer.lemmatize(token)
-            
-            processed_tokens.append(token)
+            return preprocessed_text
         
-        # Reconstruct text from tokens
-        preprocessed_text = ' '.join(processed_tokens)
+        except Exception as e:
+            # En caso de cualquier error, devolver una cadena vacía o texto original
+            self.logger.error(f"Error preprocessing text: {str(e)}")
+            return ""  # O podrías retornar el texto original: return text
         
-        return preprocessed_text
-
     def preprocess_column(self, dataframe, column_name):
         """
         Preprocesses a text column in a DataFrame.

@@ -482,7 +482,7 @@ class ClassificationPipeline:
 
     def load_and_preprocess_data(self):
         """
-        Loads and preprocesses the input data.
+        Loads and preprocesses the input data using pandas first, then converts to Spark.
         
         Returns:
             Preprocessed DataFrame or None if failed
@@ -504,33 +504,20 @@ class ClassificationPipeline:
             if not os.path.exists(input_file):
                 self.logger.error(f"Input file not found: {input_file}")
                 return None
-                
-            # Load data from input file
-            self.logger.info(f"Loading data from {input_file}")
+                    
+            # Cargar y preprocesar datos - ahora todo se hace en un único paso en load_data
+            self.logger.info(f"Loading and preprocessing data from {input_file}")
             dataframe = self.data_processor.load_data()
             if dataframe is None:
                 self.logger.error("Failed to load data")
                 return None
-            
-            # List columns to be preprocessed
-            text_columns = self.config.get_text_columns()
-            self.logger.info(f"Preprocessing columns: {text_columns}")
-            
-            # Verify that required columns exist in the dataframe
-            missing_columns = [col for col in text_columns if col not in dataframe.columns]
-            if missing_columns:
-                self.logger.error(f"The following columns specified in the configuration are missing from the dataset: {missing_columns}")
-                return None
-            
-            # Preprocess text columns
-            dataframe = self.data_processor.preprocess_text_columns(dataframe, text_columns)
             
             # Save checkpoint
             self.checkpoint_manager.save_checkpoint(dataframe, 'preprocessed_data')
             
             self.logger.info("Data loading and preprocessing completed")
             return dataframe
-            
+                
         except Exception as e:
             self.logger.error(f"Error during data loading and preprocessing: {str(e)}")
             self.logger.error(traceback.format_exc())

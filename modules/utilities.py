@@ -162,12 +162,15 @@ class SparkSessionManager:
             builder = builder.config("spark.default.parallelism", 
                                     self.spark_config.get('default_parallelism', 4))
             
-            # Additional configurations for performance
+            # Configuración para NLTK y recursos externos
+            nltk_data_dir = os.environ.get("NLTK_DATA", os.path.join(os.getcwd(), "nltk_data"))
             builder = builder.config("spark.sql.execution.arrow.pyspark.enabled", "true")
             builder = builder.config("spark.sql.adaptive.enabled", "true")
-            builder = builder.config("spark.driver.extraPythonPath", nltk.data.path[0])
-            builder = builder.config("spark.executor.extraPythonPath", nltk.data.path[0])
+            builder = builder.config("spark.driver.extraPythonPath", nltk_data_dir)
+            builder = builder.config("spark.executor.extraPythonPath", nltk_data_dir)
             
+            # Minimize shuffling for text processing workloads
+            builder = builder.config("spark.sql.shuffle.partitions", "10")
             
             # Create and cache the session
             self.session = builder.getOrCreate()
