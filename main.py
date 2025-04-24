@@ -109,43 +109,52 @@ class ClassificationPipeline:
         
     def verify_environment(self):
         """
-        Verifica que todas las condiciones necesarias se cumplan antes 
-        de iniciar el procesamiento principal.
+        Verifies all necessary conditions are met before starting the main processing.
+        This method checks:
+        - Input/output file paths
+        - API credentials (if required)
+        - Clustering perspective configurations
+        - Critical dependencies
+        - Spark configuration
+        - Data loading capability
         
         Returns:
-            bool: True si todas las verificaciones pasan, False en caso contrario
+            bool: True if all critical checks pass, False otherwise
         """
         self.logger.info("Starting environment verification...")
         all_checks_passed = True
         verification_results = {}
         
-        # 1. Verificar archivos de entrada/salida
+        # 1. Verify input/output files and directories
         try:
+            # Check input file existence
             input_file = self.config.get_input_file_path()
             if not os.path.exists(input_file):
                 verification_results["input_file"] = f"ERROR: Input file not found: {input_file}"
                 all_checks_passed = False
             else:
                 verification_results["input_file"] = f"SUCCESS: Input file verified: {input_file}"
-                
+            
+            # Check output directory (create if doesn't exist)
             output_dir = os.path.dirname(self.config.get_output_file_path())
             if not os.path.exists(output_dir):
                 try:
                     os.makedirs(output_dir, exist_ok=True)
                     verification_results["output_directory"] = f"INFO: Output directory created: {output_dir}"
-                except:
-                    verification_results["output_directory"] = f"ERROR: Cannot create output directory: {output_dir}"
+                except Exception as dir_error:
+                    verification_results["output_directory"] = f"ERROR: Cannot create output directory: {output_dir} - {str(dir_error)}"
                     all_checks_passed = False
             else:
                 verification_results["output_directory"] = f"SUCCESS: Output directory verified: {output_dir}"
-                
+            
+            # Check results directory (create if doesn't exist)
             results_dir = self.config.get_results_dir()
             if not os.path.exists(results_dir):
                 try:
                     os.makedirs(results_dir, exist_ok=True)
                     verification_results["results_directory"] = f"INFO: Results directory created: {results_dir}"
-                except:
-                    verification_results["results_directory"] = f"ERROR: Cannot create results directory: {results_dir}"
+                except Exception as dir_error:
+                    verification_results["results_directory"] = f"ERROR: Cannot create results directory: {results_dir} - {str(dir_error)}"
                     all_checks_passed = False
             else:
                 verification_results["results_directory"] = f"SUCCESS: Results directory verified: {results_dir}"
@@ -153,7 +162,7 @@ class ClassificationPipeline:
             verification_results["file_paths"] = f"ERROR: Failed to verify file paths: {str(e)}"
             all_checks_passed = False
         
-        # 2. Verificar credenciales API (solo si se usa OpenAI)
+        # 2. Verify API credentials (if OpenAI is used for cluster labeling)
         try:
             labeling_method = self.config.get_config_value('cluster_labeling.method', 'tfidf')
             if labeling_method == 'openai':
@@ -167,23 +176,22 @@ class ClassificationPipeline:
                     verification_results["openai_api"] = f"WARNING: Invalid OpenAI API key format in {api_key_env}"
                     verification_results["openai_fallback"] = "INFO: Will fall back to TF-IDF for cluster labeling"
                 else:
-                    # Verificar conexión a la API
-                    import openai
-                    openai.api_key = api_key
+                    # Light API connection test
                     try:
-                        # Solo hacer una llamada liviana para verificar
+                        import openai
+                        openai.api_key = api_key
                         response = openai.models.list(limit=1)
                         verification_results["openai_api"] = "SUCCESS: OpenAI API key verified and working"
-                    except Exception as e:
-                        verification_results["openai_api"] = f"WARNING: OpenAI API key verification failed: {str(e)}"
+                    except Exception as api_error:
+                        verification_results["openai_api"] = f"WARNING: OpenAI API key verification failed: {str(api_error)}"
                         verification_results["openai_fallback"] = "INFO: Will fall back to TF-IDF for cluster labeling"
             else:
                 verification_results["openai_api"] = f"INFO: OpenAI API not required (using {labeling_method} method)"
         except Exception as e:
-            verification_results["openai_api"] = f"ERROR: Failed to verify OpenAI API: {str(e)}"
-            # No se considera crítico, por lo que no cambiamos all_checks_passed
+            verification_results["openai_api"] = f"WARNING: Failed to verify OpenAI API: {str(e)}"
+            # Not considered critical, so all_checks_passed remains unchanged
         
-        # 3. Verificar configuración de clustering perspectivas
+        # 3. Verify clustering perspective configurations
         try:
             perspectives = self.config.get_clustering_perspectives()
             if not perspectives:
@@ -192,15 +200,21 @@ class ClassificationPipeline:
             else:
                 perspective_issues = []
                 for name, config in perspectives.items():
+                    # Check for required algorithm field
                     if 'algorithm' not in config:
                         perspective_issues.append(f"Missing 'algorithm' in '{name}'")
-                    elif config['algorithm'] == 'hdbscan':
-                        # Verificar parámetros de HDBSCAN
+                    # Check HDBSCAN-specific parameters
+                    elif config['algorithm'].lower() == 'hdbscan':
                         params = config.get('params', {})
                         min_cluster_size = params.get('min_cluster_size', 0)
                         if min_cluster_size < 25:
                             perspective_issues.append(f"Low min_cluster_size ({min_cluster_size}) in '{name}' may cause excessive fragmentation")
-                            
+                    # Check required fields
+                    if 'columns' not in config:
+                        perspective_issues.append(f"Missing 'columns' in '{name}'")
+                    if 'output_column' not in config:
+                        perspective_issues.append(f"Missing 'output_column' in '{name}'")
+                
                 if perspective_issues:
                     verification_results["clustering_perspectives"] = f"WARNING: Issues with clustering perspectives: {', '.join(perspective_issues)}"
                 else:
@@ -209,19 +223,22 @@ class ClassificationPipeline:
             verification_results["clustering_perspectives"] = f"ERROR: Failed to verify clustering perspectives: {str(e)}"
             all_checks_passed = False
         
-        # 4. Verificar dependencias críticas
+        # 4. Verify critical dependencies
         try:
+            # Check for required packages
             import hdbscan
             import umap
             import sklearn
+            import numpy as np
+            import pandas as pd
             verification_results["dependencies"] = "SUCCESS: All critical dependencies available"
         except ImportError as e:
             verification_results["dependencies"] = f"ERROR: Missing critical dependency: {str(e)}"
             all_checks_passed = False
         
-        # 5. Verificar configuración de Spark
+        # 5. Verify Spark configuration
         try:
-            # Intentar crear una sesión de Spark para verificar
+            # Attempt to create a Spark session
             spark = self.spark_manager.get_or_create_session()
             spark_version = spark.version
             verification_results["spark"] = f"SUCCESS: Spark session created successfully (version {spark_version})"
@@ -229,15 +246,22 @@ class ClassificationPipeline:
             verification_results["spark"] = f"ERROR: Failed to create Spark session: {str(e)}"
             all_checks_passed = False
         
-        # 6. Probar carga básica de datos para verificar que el formato está soportado
+        # 6. Test data loading to verify the format is supported
         try:
             input_file = self.config.get_input_file_path()
-            # Solo verificar que podemos leer el archivo, sin cargarlo completamente
-            sample_size = 10  # Solo intentar leer algunas filas
-            pd_sample = pd.read_stata(input_file, convert_categoricals=False, nrows=sample_size)
-            verification_results["data_loading"] = f"SUCCESS: Successfully tested data loading from {input_file}"
+            # Test loading a small sample only
+            # Note: pandas read_stata doesn't support 'nrows' but can use 'iterator'
+            # to read just a few rows
+            try:
+                with pd.read_stata(input_file, convert_categoricals=False, iterator=True) as reader:
+                    pd_sample = reader.read(10)  # Read just 10 rows
+                verification_results["data_loading"] = f"SUCCESS: Successfully tested data loading from {input_file}"
+            except Exception:
+                # Fall back to loading the entire file if iterator approach fails
+                pd_sample = pd.read_stata(input_file, convert_categoricals=False)
+                verification_results["data_loading"] = f"SUCCESS: Successfully loaded data from {input_file} (full file)"
             
-            # Verificar que las columnas de texto necesarias existen
+            # Verify required text columns exist
             text_columns = self.config.get_text_columns()
             missing_columns = [col for col in text_columns if col not in pd_sample.columns]
             if missing_columns:
@@ -245,11 +269,49 @@ class ClassificationPipeline:
                 all_checks_passed = False
             else:
                 verification_results["text_columns"] = f"SUCCESS: All required text columns present in dataset"
+            
+            # Check for empty text columns
+            empty_columns = []
+            for col in text_columns:
+                if col in pd_sample.columns and pd_sample[col].notna().sum() == 0:
+                    empty_columns.append(col)
+            
+            if empty_columns:
+                verification_results["empty_columns"] = f"WARNING: The following text columns contain no data: {', '.join(empty_columns)}"
+        
         except Exception as e:
             verification_results["data_loading"] = f"ERROR: Failed to test data loading: {str(e)}"
             all_checks_passed = False
         
-        # Mostrar resultados de verificación
+        # 7. Verify other configurations
+        try:
+            # Check for consistent parameters between perspectives
+            perspectives = self.config.get_clustering_perspectives()
+            num_perspectives = len(perspectives)
+            if num_perspectives > 1:
+                # Check for column overlap
+                all_columns = set()
+                duplicate_columns = set()
+                for name, config in perspectives.items():
+                    output_col = config.get('output_column', '')
+                    if output_col in all_columns:
+                        duplicate_columns.add(output_col)
+                    all_columns.add(output_col)
+                
+                if duplicate_columns:
+                    verification_results["perspective_output_columns"] = f"WARNING: Duplicate output columns detected: {', '.join(duplicate_columns)}"
+            
+            # Check memory settings (warn if too low)
+            spark_config = self.config.get_spark_config()
+            driver_memory = spark_config.get('driver_memory', '4g')
+            if driver_memory.endswith('g') and int(driver_memory[:-1]) < 4:
+                verification_results["memory_settings"] = f"WARNING: Driver memory ({driver_memory}) may be too low for large datasets"
+                
+        except Exception as e:
+            verification_results["config_checks"] = f"WARNING: Additional configuration checks failed: {str(e)}"
+            # Not considered critical
+        
+        # Display verification results
         self.logger.info("=== ENVIRONMENT VERIFICATION RESULTS ===")
         for check, result in verification_results.items():
             if result.startswith("ERROR"):
@@ -260,14 +322,14 @@ class ClassificationPipeline:
                 self.logger.info(result)
         self.logger.info("=======================================")
         
-        # Resultado final
+        # Final result
         if all_checks_passed:
             self.logger.info("All critical checks PASSED. Environment is ready for processing.")
         else:
             self.logger.error("Some critical checks FAILED. Please resolve the issues before proceeding.")
         
         return all_checks_passed
-        
+
     def run(self):
         """
         Executes the complete classification pipeline.
