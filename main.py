@@ -698,7 +698,7 @@ class ClassificationPipeline:
             self.logger.info(f"Saving pandas DataFrame with {dataframe.shape[0]} rows and {dataframe.shape[1]} columns")
             
             # Save to Stata format directly
-            dataframe.to_stata(output_file, write_index=False)
+            dataframe.to_stata(output_file, write_index=False, version=117)
             
             # Log summary of added columns
             perspectives = self.config.get_clustering_perspectives()

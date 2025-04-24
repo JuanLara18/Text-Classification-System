@@ -2454,7 +2454,812 @@ class EvaluationReporter:
                 """)
             return error_path
         
+    def generate_detailed_cluster_report(self, perspective_name, cluster_characteristics, visualization_paths):
+        """
+        Generates a detailed HTML report for a clustering perspective.
         
+        Args:
+            perspective_name: Name of the clustering perspective
+            cluster_characteristics: List of cluster characteristic dictionaries
+            visualization_paths: Dictionary mapping visualization types to file paths
+            
+        Returns:
+            Path to the generated HTML report
+        """
+        self.logger.info(f"Generating detailed cluster report for {perspective_name}")
+        
+        try:
+            file_path = os.path.join(self.results_dir, f"{perspective_name}_detailed_report.html")
+            
+            # Start building HTML content
+            html_content = f"""
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Detailed Cluster Report - {perspective_name}</title>
+                <style>
+                    body {{
+                        font-family: Arial, sans-serif;
+                        line-height: 1.6;
+                        color: #333;
+                        max-width: 1200px;
+                        margin: 0 auto;
+                        padding: 20px;
+                        background-color: #f9f9f9;
+                    }}
+                    h1, h2, h3, h4 {{
+                        color: #2c3e50;
+                    }}
+                    h1 {{
+                        border-bottom: 2px solid #3498db;
+                        padding-bottom: 10px;
+                        text-align: center;
+                    }}
+                    .section {{
+                        margin-bottom: 30px;
+                        padding: 20px;
+                        background-color: white;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                    }}
+                    .cluster-card {{
+                        margin-bottom: 20px;
+                        border: 1px solid #ddd;
+                        border-radius: 8px;
+                        overflow: hidden;
+                    }}
+                    .cluster-header {{
+                        background-color: #edf2f7;
+                        padding: 12px 15px;
+                        border-bottom: 1px solid #ddd;
+                    }}
+                    .cluster-body {{
+                        padding: 15px;
+                    }}
+                    .cluster-metrics {{
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 15px;
+                        margin-bottom: 15px;
+                    }}
+                    .metric {{
+                        background-color: #f8f9fa;
+                        padding: 8px 12px;
+                        border-radius: 4px;
+                        font-size: 0.9em;
+                    }}
+                    .visualization {{
+                        margin: 20px 0;
+                        text-align: center;
+                    }}
+                    .visualization img {{
+                        max-width: 100%;
+                        height: auto;
+                        border: 1px solid #ddd;
+                        border-radius: 4px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    }}
+                    .terms-container {{
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 8px;
+                        margin-bottom: 15px;
+                    }}
+                    .term {{
+                        background-color: #e9f7fe;
+                        border: 1px solid #bde5f8;
+                        border-radius: 15px;
+                        padding: 4px 10px;
+                        font-size: 0.9em;
+                    }}
+                    .examples {{
+                        background-color: #f8f9fa;
+                        border-left: 3px solid #3498db;
+                        padding: 10px 15px;
+                        margin-bottom: 15px;
+                        font-style: italic;
+                        color: #555;
+                    }}
+                    .footer {{
+                        text-align: center;
+                        margin-top: 30px;
+                        padding-top: 20px;
+                        border-top: 1px solid #ddd;
+                        font-size: 0.9em;
+                        color: #777;
+                    }}
+                    table {{
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin: 20px 0;
+                    }}
+                    th, td {{
+                        padding: 10px;
+                        border: 1px solid #ddd;
+                        text-align: left;
+                    }}
+                    th {{
+                        background-color: #edf2f7;
+                    }}
+                    tr:nth-child(even) {{
+                        background-color: #f8f9fa;
+                    }}
+                </style>
+            </head>
+            <body>
+                <h1>Detailed Cluster Analysis Report: {perspective_name}</h1>
+                
+                <div class="section">
+                    <h2>Overview</h2>
+                    <p>This report presents a detailed analysis of the clustering results for the <strong>{perspective_name}</strong> perspective.</p>
+                    <p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                    
+                    <h3>Cluster Distribution Summary</h3>
+                    <table>
+                        <tr>
+                            <th>Cluster ID</th>
+                            <th>Size</th>
+                            <th>Percentage</th>
+                            <th>Top Terms</th>
+                        </tr>
+            """
+            
+            # Add cluster distribution table
+            sorted_chars = sorted(cluster_characteristics, key=lambda x: x.get('size', 0), reverse=True)
+            for cluster in sorted_chars:
+                top_terms_str = ", ".join([term for term, _ in cluster.get('top_terms', [])[:5]])
+                html_content += f"""
+                    <tr>
+                        <td>Cluster {cluster.get('id', 'N/A')}</td>
+                        <td>{cluster.get('size', 0)}</td>
+                        <td>{cluster.get('percentage', 0):.2f}%</td>
+                        <td>{top_terms_str}</td>
+                    </tr>
+                """
+            
+            html_content += """
+                    </table>
+                </div>
+            """
+            
+            # Add visualizations section
+            if visualization_paths:
+                html_content += """
+                <div class="section">
+                    <h2>Visualizations</h2>
+                """
+                
+                for viz_type, path in visualization_paths.items():
+                    if os.path.exists(path):
+                        # Create a relative path
+                        rel_path = os.path.relpath(path, self.results_dir)
+                        title = viz_type.replace('_', ' ').title()
+                        
+                        html_content += f"""
+                        <div class="visualization">
+                            <h3>{title}</h3>
+                            <img src="{rel_path}" alt="{title}" />
+                        </div>
+                        """
+                
+                html_content += """
+                </div>
+                """
+            
+            # Add detailed cluster analysis section
+            html_content += """
+                <div class="section">
+                    <h2>Detailed Cluster Analysis</h2>
+            """
+            
+            # Add cards for each cluster
+            for cluster in sorted_chars:
+                cluster_id = cluster.get('id', 'N/A')
+                size = cluster.get('size', 0)
+                percentage = cluster.get('percentage', 0)
+                
+                html_content += f"""
+                    <div class="cluster-card">
+                        <div class="cluster-header">
+                            <h3>Cluster {cluster_id} ({percentage:.2f}% of data)</h3>
+                        </div>
+                        <div class="cluster-body">
+                            <div class="cluster-metrics">
+                                <div class="metric"><strong>Size:</strong> {size} records</div>
+                """
+                
+                # Add dispersion and distinctiveness if available
+                if 'dispersion' in cluster:
+                    html_content += f"""
+                                <div class="metric"><strong>Dispersion:</strong> {cluster['dispersion']:.4f}</div>
+                    """
+                
+                if 'distinctiveness' in cluster:
+                    html_content += f"""
+                                <div class="metric"><strong>Distinctiveness:</strong> {cluster['distinctiveness']:.4f}</div>
+                    """
+                
+                html_content += """
+                            </div>
+                """
+                
+                # Add top terms with weights
+                if 'top_terms' in cluster and cluster['top_terms']:
+                    html_content += """
+                            <h4>Key Terms with Weights</h4>
+                            <div class="terms-container">
+                    """
+                    
+                    for term, weight in cluster['top_terms'][:15]:
+                        html_content += f"""
+                                <div class="term">{term} ({weight:.3f})</div>
+                        """
+                    
+                    html_content += """
+                            </div>
+                    """
+                
+                # Add representative examples
+                if 'examples' in cluster and cluster['examples']:
+                    html_content += """
+                            <h4>Representative Examples</h4>
+                    """
+                    
+                    for i, example in enumerate(cluster['examples'][:3]):
+                        # Truncate long examples
+                        display_example = example
+                        if len(example) > 300:
+                            display_example = example[:300] + "..."
+                        
+                        html_content += f"""
+                            <div class="examples">
+                                <strong>Example {i+1}:</strong> {display_example}
+                            </div>
+                        """
+                
+                html_content += """
+                        </div>
+                    </div>
+                """
+            
+            html_content += """
+                </div>
+                
+                <div class="footer">
+                    <p>Generated by the Text Classification System</p>
+                </div>
+            </body>
+            </html>
+            """
+            
+            # Write HTML to file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            
+            self.logger.info(f"Detailed cluster report saved to: {file_path}")
+            return file_path
+            
+        except Exception as e:
+            self.logger.error(f"Error generating detailed cluster report: {str(e)}")
+            
+            # Create a simple error report
+            error_path = os.path.join(self.results_dir, f"{perspective_name}_detailed_report_error.html")
+            with open(error_path, 'w', encoding='utf-8') as f:
+                f.write(f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Error Report</title>
+                </head>
+                <body>
+                    <h1>Error Generating Detailed Report</h1>
+                    <p>An error occurred while generating the report: {str(e)}</p>
+                </body>
+                </html>
+                """)
+            
+            return error_path
+
+    def create_cross_perspective_analysis(self, dataframe, perspective1_col, perspective2_col, perspective1_name, perspective2_name):
+        """
+        Analyzes the relationship between different clustering perspectives.
+        
+        Args:
+            dataframe: DataFrame containing the clustering results
+            perspective1_col: Column name for the first clustering perspective
+            perspective2_col: Column name for the second clustering perspective
+            perspective1_name: Display name for the first perspective
+            perspective2_name: Display name for the second perspective
+            
+        Returns:
+            Dictionary containing analysis results
+        """
+        self.logger.info(f"Creating cross-perspective analysis between {perspective1_name} and {perspective2_name}")
+        
+        try:
+            from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
+            
+            # Check if columns exist
+            if perspective1_col not in dataframe.columns or perspective2_col not in dataframe.columns:
+                missing_cols = []
+                if perspective1_col not in dataframe.columns:
+                    missing_cols.append(perspective1_col)
+                if perspective2_col not in dataframe.columns:
+                    missing_cols.append(perspective2_col)
+                raise ValueError(f"Missing columns in DataFrame: {', '.join(missing_cols)}")
+            
+            # Get cluster assignments
+            df_filtered = dataframe.dropna(subset=[perspective1_col, perspective2_col])
+            
+            if len(df_filtered) == 0:
+                raise ValueError(f"No overlapping data points between {perspective1_name} and {perspective2_name}")
+            
+            # Create cross-tabulation (raw counts)
+            crosstab = pd.crosstab(df_filtered[perspective1_col], df_filtered[perspective2_col])
+            
+            # Create normalized cross-tabulation (row percentages)
+            norm_crosstab = pd.crosstab(
+                df_filtered[perspective1_col], 
+                df_filtered[perspective2_col],
+                normalize='index'
+            ) * 100
+            
+            # Calculate mutual information score
+            try:
+                mi_score = normalized_mutual_info_score(
+                    df_filtered[perspective1_col],
+                    df_filtered[perspective2_col]
+                )
+            except:
+                mi_score = None
+            
+            # Calculate adjusted Rand index
+            try:
+                ari_score = adjusted_rand_score(
+                    df_filtered[perspective1_col],
+                    df_filtered[perspective2_col]
+                )
+            except:
+                ari_score = None
+            
+            # Find strongest relationships between clusters
+            key_relationships = []
+            
+            for idx in norm_crosstab.index:
+                row = norm_crosstab.loc[idx]
+                max_col = row.idxmax()
+                max_value = row[max_col]
+                
+                if max_value >= 25:  # Only include strong relationships (25% or more)
+                    # Get cluster names if available
+                    p1_name_col = f"{perspective1_col}_label"
+                    p2_name_col = f"{perspective2_col}_label"
+                    
+                    p1_name = f"Cluster {idx}"
+                    p2_name = f"Cluster {max_col}"
+                    
+                    if p1_name_col in dataframe.columns:
+                        names = dataframe.loc[dataframe[perspective1_col] == idx, p1_name_col].dropna()
+                        if len(names) > 0:
+                            p1_name = names.iloc[0]
+                    
+                    if p2_name_col in dataframe.columns:
+                        names = dataframe.loc[dataframe[perspective2_col] == max_col, p2_name_col].dropna()
+                        if len(names) > 0:
+                            p2_name = names.iloc[0]
+                    
+                    key_relationships.append({
+                        'p1_cluster': idx,
+                        'p2_cluster': max_col,
+                        'p1_name': p1_name,
+                        'p2_name': p2_name,
+                        'percentage': max_value,
+                        'count': crosstab.loc[idx, max_col]
+                    })
+            
+            # Sort by percentage (descending)
+            key_relationships.sort(key=lambda x: x['percentage'], reverse=True)
+            
+            # Generate markdown summary
+            summary = [
+                f"# Cross-Perspective Analysis: {perspective1_name} vs {perspective2_name}",
+                "",
+                "## Overall Relationship Metrics",
+                f"- **Records analyzed**: {len(df_filtered)}",
+                f"- **Normalized Mutual Information**: {mi_score:.4f}" if mi_score is not None else "",
+                f"- **Adjusted Rand Index**: {ari_score:.4f}" if ari_score is not None else "",
+                "",
+                "## Key Relationships Between Clusters",
+                ""
+            ]
+            
+            for rel in key_relationships[:10]:  # Limit to top 10
+                summary.append(f"- **{rel['p1_name']}** → **{rel['p2_name']}**: {rel['percentage']:.1f}% ({rel['count']} records)")
+            
+            summary.append("")
+            summary.append("## Interpretation")
+            
+            # Add interpretation based on scores
+            if mi_score is not None:
+                if mi_score > 0.7:
+                    summary.append("- The clustering perspectives show **strong alignment** (high mutual information)")
+                elif mi_score > 0.4:
+                    summary.append("- The clustering perspectives show **moderate alignment** (medium mutual information)")
+                else:
+                    summary.append("- The clustering perspectives show **weak alignment** (low mutual information)")
+            
+            if ari_score is not None:
+                if ari_score > 0.5:
+                    summary.append("- The cluster assignments are **highly consistent** between perspectives (high adjusted Rand index)")
+                elif ari_score > 0.2:
+                    summary.append("- The cluster assignments show **some consistency** between perspectives (medium adjusted Rand index)")
+                else:
+                    summary.append("- The cluster assignments show **little consistency** between perspectives (low adjusted Rand index)")
+            
+            markdown_summary = "\n".join(summary)
+            
+            # Save the analysis to a markdown file
+            save_path = os.path.join(self.results_dir, f"{perspective1_name}_{perspective2_name}_analysis.md")
+            with open(save_path, "w", encoding="utf-8") as f:
+                f.write(markdown_summary)
+            
+            # Create result dictionary
+            result = {
+                'crosstab': crosstab,
+                'normalized_crosstab': norm_crosstab,
+                'mutual_information': mi_score,
+                'adjusted_rand_index': ari_score,
+                'key_relationships': key_relationships,
+                'markdown_summary': markdown_summary,
+                'file_path': save_path
+            }
+            
+            self.logger.info(f"Cross-perspective analysis saved to: {save_path}")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error creating cross-perspective analysis: {str(e)}")
+            
+            # Create error markdown
+            error_text = f"# Error in Cross-Perspective Analysis\n\nAn error occurred: {str(e)}"
+            error_path = os.path.join(self.results_dir, f"{perspective1_name}_{perspective2_name}_analysis_error.md")
+            
+            with open(error_path, "w", encoding="utf-8") as f:
+                f.write(error_text)
+            
+            return {
+                'error': str(e),
+                'file_path': error_path,
+                'markdown_summary': error_text
+            }        
+        
+    def generate_combined_perspectives_report(self, dataframe, perspective_columns, perspective_names):
+        """
+        Creates a comprehensive report comparing all clustering perspectives.
+        
+        Args:
+            dataframe: DataFrame containing the clustering results
+            perspective_columns: List of column names for each clustering perspective
+            perspective_names: List of display names for each perspective
+            
+        Returns:
+            Path to the generated report
+        """
+        self.logger.info("Generating combined perspectives report")
+        
+        try:
+            from sklearn.metrics import normalized_mutual_info_score
+            from itertools import combinations
+            
+            if len(perspective_columns) != len(perspective_names):
+                raise ValueError("Number of perspective columns and names must match")
+            
+            if len(perspective_columns) < 1:
+                raise ValueError("At least one perspective is required")
+            
+            file_path = os.path.join(self.results_dir, "combined_perspectives_report.html")
+            
+            # Generate HTML content (similar structure as detailed_cluster_report)
+            # [HTML content generation code]
+            
+            html_content = f"""
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Combined Clustering Perspectives Report</title>
+                <style>
+                    body {{
+                        font-family: Arial, sans-serif;
+                        line-height: 1.6;
+                        color: #333;
+                        max-width: 1200px;
+                        margin: 0 auto;
+                        padding: 20px;
+                        background-color: #f9f9f9;
+                    }}
+                    h1, h2, h3, h4 {{
+                        color: #2c3e50;
+                    }}
+                    h1 {{
+                        border-bottom: 2px solid #3498db;
+                        padding-bottom: 10px;
+                        text-align: center;
+                    }}
+                    .section {{
+                        margin-bottom: 30px;
+                        padding: 20px;
+                        background-color: white;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                    }}
+                    .grid-container {{
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                        gap: 20px;
+                        margin-top: 20px;
+                    }}
+                    .grid-item {{
+                        border: 1px solid #ddd;
+                        border-radius: 8px;
+                        padding: 15px;
+                    }}
+                    .heatmap {{
+                        margin: 20px 0;
+                        text-align: center;
+                    }}
+                    .heatmap img {{
+                        max-width: 100%;
+                        border: 1px solid #ddd;
+                        border-radius: 4px;
+                    }}
+                    table {{
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin: 20px 0;
+                    }}
+                    th, td {{
+                        padding: 10px;
+                        border: 1px solid #ddd;
+                        text-align: left;
+                    }}
+                    th {{
+                        background-color: #edf2f7;
+                    }}
+                    tr:nth-child(even) {{
+                        background-color: #f8f9fa;
+                    }}
+                    .relationship-score {{
+                        font-weight: bold;
+                        padding: 4px 8px;
+                        border-radius: 4px;
+                    }}
+                    .high {{
+                        background-color: #d4edda;
+                        color: #155724;
+                    }}
+                    .medium {{
+                        background-color: #fff3cd;
+                        color: #856404;
+                    }}
+                    .low {{
+                        background-color: #f8d7da;
+                        color: #721c24;
+                    }}
+                    .footer {{
+                        text-align: center;
+                        margin-top: 30px;
+                        padding-top: 20px;
+                        border-top: 1px solid #ddd;
+                        font-size: 0.9em;
+                        color: #777;
+                    }}
+                </style>
+            </head>
+            <body>
+                <h1>Combined Clustering Perspectives Report</h1>
+                
+                <div class="section">
+                    <h2>Overview</h2>
+                    <p>This report provides a comprehensive view of all clustering perspectives and their relationships.</p>
+                    <p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                    
+                    <h3>Clustering Perspectives Summary</h3>
+                    <table>
+                        <tr>
+                            <th>Perspective</th>
+                            <th>Column</th>
+                            <th>Clusters</th>
+                            <th>Records</th>
+                        </tr>
+            """
+            
+            # Add summary table for each perspective
+            for i in range(len(perspective_columns)):
+                col = perspective_columns[i]
+                name = perspective_names[i]
+                
+                # Count non-null records
+                valid_records = dataframe[col].notna().sum()
+                
+                # Count unique clusters
+                unique_clusters = dataframe[col].dropna().nunique()
+                
+                html_content += f"""
+                    <tr>
+                        <td>{name}</td>
+                        <td>{col}</td>
+                        <td>{unique_clusters}</td>
+                        <td>{valid_records}</td>
+                    </tr>
+                """
+            
+            html_content += """
+                    </table>
+                </div>
+            """
+            
+            # Add cross-perspective relationships section
+            if len(perspective_columns) > 1:
+                html_content += """
+                <div class="section">
+                    <h2>Cross-Perspective Relationships</h2>
+                    <p>This section analyzes how different clustering perspectives relate to each other.</p>
+                    
+                    <h3>Mutual Information Scores</h3>
+                    <table>
+                        <tr>
+                            <th>Perspective A</th>
+                            <th>Perspective B</th>
+                            <th>Mutual Information</th>
+                            <th>Interpretation</th>
+                        </tr>
+                """
+                
+                # Calculate mutual information for each pair of perspectives
+                for (i, j) in combinations(range(len(perspective_columns)), 2):
+                    col1 = perspective_columns[i]
+                    col2 = perspective_columns[j]
+                    name1 = perspective_names[i]
+                    name2 = perspective_names[j]
+                    
+                    # Get filtered data where both columns have values
+                    filtered_data = dataframe.dropna(subset=[col1, col2])
+                    
+                    if len(filtered_data) > 0:
+                        try:
+                            mi_score = normalized_mutual_info_score(
+                                filtered_data[col1],
+                                filtered_data[col2]
+                            )
+                            
+                            # Determine interpretation and class
+                            if mi_score > 0.7:
+                                interpretation = "Strong alignment"
+                                score_class = "high"
+                            elif mi_score > 0.4:
+                                interpretation = "Moderate alignment"
+                                score_class = "medium"
+                            else:
+                                interpretation = "Weak alignment"
+                                score_class = "low"
+                            
+                            html_content += f"""
+                            <tr>
+                                <td>{name1}</td>
+                                <td>{name2}</td>
+                                <td><span class="relationship-score {score_class}">{mi_score:.4f}</span></td>
+                                <td>{interpretation}</td>
+                            </tr>
+                            """
+                        except Exception as e:
+                            html_content += f"""
+                            <tr>
+                                <td>{name1}</td>
+                                <td>{name2}</td>
+                                <td colspan="2">Error calculating score: {str(e)}</td>
+                            </tr>
+                            """
+                
+                html_content += """
+                    </table>
+                """
+                
+                # Add visualizations grid if available
+                html_content += """
+                    <h3>Relationship Visualizations</h3>
+                    <div class="grid-container">
+                """
+                
+                # Check for correlation heatmaps between perspectives
+                for (i, j) in combinations(range(len(perspective_columns)), 2):
+                    name1 = perspective_names[i]
+                    name2 = perspective_names[j]
+                    
+                    heatmap_path = os.path.join(self.results_dir, f"{name1}_{name2}_correlation_heatmap.png")
+                    
+                    if os.path.exists(heatmap_path):
+                        # Create a relative path
+                        rel_path = os.path.relpath(heatmap_path, self.results_dir)
+                        
+                        html_content += f"""
+                        <div class="grid-item">
+                            <h4>{name1} vs {name2}</h4>
+                            <div class="heatmap">
+                                <img src="{rel_path}" alt="Correlation Heatmap" />
+                            </div>
+                        </div>
+                        """
+                
+                html_content += """
+                    </div>
+                </div>
+                """
+            
+            # Add individual perspectives section
+            html_content += """
+                <div class="section">
+                    <h2>Individual Perspectives</h2>
+                    <p>This section provides links to detailed reports for each clustering perspective.</p>
+                    
+                    <ul>
+            """
+            
+            # Add links to individual reports
+            for i in range(len(perspective_columns)):
+                name = perspective_names[i]
+                detailed_report_path = os.path.join(self.results_dir, f"{name}_detailed_report.html")
+                
+                if os.path.exists(detailed_report_path):
+                    # Create a relative path
+                    rel_path = os.path.relpath(detailed_report_path, self.results_dir)
+                    
+                    html_content += f"""
+                    <li><a href="{rel_path}">{name} Detailed Report</a></li>
+                    """
+            
+            html_content += """
+                    </ul>
+                </div>
+                
+                <div class="footer">
+                    <p>Generated by the Text Classification System</p>
+                </div>
+            </body>
+            </html>
+            """
+            
+            # Write HTML to file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            
+            self.logger.info(f"Combined perspectives report saved to: {file_path}")
+            return file_path
+            
+        except Exception as e:
+            self.logger.error(f"Error generating combined perspectives report: {str(e)}")
+            
+            # Create a simple error report
+            error_path = os.path.join(self.results_dir, "combined_perspectives_report_error.html")
+            with open(error_path, 'w', encoding='utf-8') as f:
+                f.write(f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Error Report</title>
+                </head>
+                <body>
+                    <h1>Error Generating Combined Perspectives Report</h1>
+                    <p>An error occurred while generating the report: {str(e)}</p>
+                </body>
+                </html>
+                """)
+            
+            return error_path
+
 class ClusterAnalyzer:
     """
     Analyzer for extracting detailed insights from clustering results.

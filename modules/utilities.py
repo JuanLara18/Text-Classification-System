@@ -389,7 +389,7 @@ class CheckpointManager:
             self.directory = 'checkpoints'
             self.max_checkpoints = 5
             self.interval = 1
-    
+        
     def save_checkpoint(self, data, step_name):
         """
         Saves a checkpoint for a processing step.
@@ -405,6 +405,26 @@ class CheckpointManager:
             return False
         
         try:
+            # Handle Spark DataFrame by converting to pandas
+            from pyspark.sql import DataFrame as SparkDataFrame
+            
+            # If data is a tuple/list containing SparkDataFrame, process each item
+            if isinstance(data, (tuple, list)):
+                processed_data = []
+                for item in data:
+                    if isinstance(item, SparkDataFrame):
+                        # Convert Spark DataFrame to pandas
+                        processed_item = item.toPandas()
+                        processed_data.append(processed_item)
+                    else:
+                        processed_data.append(item)
+                data_to_save = tuple(processed_data) if isinstance(data, tuple) else processed_data
+            # If data is a single SparkDataFrame
+            elif isinstance(data, SparkDataFrame):
+                data_to_save = data.toPandas()
+            else:
+                data_to_save = data
+            
             # Create a timestamped filename
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"{step_name}_{timestamp}.pkl"
@@ -415,7 +435,7 @@ class CheckpointManager:
             
             # Save the data
             with open(filepath, 'wb') as f:
-                pickle.dump(data, f)
+                pickle.dump(data_to_save, f)
             
             # Clean old checkpoints for this step
             self._clean_step_checkpoints(step_name)
@@ -425,7 +445,7 @@ class CheckpointManager:
         except Exception as e:
             print(f"Error saving checkpoint for {step_name}: {str(e)}")
             return False
-    
+
     def load_checkpoint(self, step_name):
         """
         Loads the latest checkpoint if it exists.
