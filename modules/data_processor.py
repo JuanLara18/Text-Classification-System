@@ -642,15 +642,20 @@ class FeatureExtractor:
         
         try:
             if method == 'umap':
-                # Add more parameters to improve performance and stability
+                # Get UMAP specific parameters from config
+                n_neighbors = dim_reduction_config.get('n_neighbors', 15)
+                min_dist = dim_reduction_config.get('min_dist', 0.1)
+                metric = dim_reduction_config.get('metric', 'cosine')
+                
+                # Create and apply UMAP reducer with improved parameters
                 reducer = umap.UMAP(
                     n_components=n_components,
                     random_state=random_state,
-                    n_neighbors=30,        # Increase from default 15
-                    min_dist=0.25,         # Increase for more stability
-                    metric='cosine',       # Often better for text
-                    low_memory=True,       # Enable low memory mode
-                    verbose=True           # See progress
+                    n_neighbors=n_neighbors,
+                    min_dist=min_dist,
+                    metric=metric,
+                    low_memory=True,
+                    verbose=True
                 )
                 reduced_features = reducer.fit_transform(feature_matrix)
             elif method == 'pca':

@@ -1644,10 +1644,6 @@ class ClusteringVisualizer:
         """
         Creates a visualization of top terms for each cluster.
         
-        This method generates a horizontal bar chart showing the most important
-        terms for each cluster, making it easier to understand what distinguishes
-        each cluster from others.
-        
         Args:
             characteristics: List of cluster characteristic dictionaries
             perspective_name: Name of the clustering perspective
@@ -1659,14 +1655,30 @@ class ClusteringVisualizer:
         
         try:
             # Check if we have characteristics with top terms
-            if not characteristics or 'top_terms' not in characteristics[0]:
-                raise ValueError("No valid characteristics with top terms provided")
+            valid_chars = []
+            for cluster in characteristics:
+                if 'top_terms' in cluster and cluster['top_terms'] and len(cluster['top_terms']) > 0:
+                    valid_chars.append(cluster)
+            
+            if not valid_chars:
+                self.logger.warning("No valid characteristics with top terms provided")
+                # Create a simple error image
+                plt.figure(figsize=(8, 6))
+                plt.text(0.5, 0.5, "No term importance data available for visualization",
+                        horizontalalignment='center', fontsize=14, color='red')
+                plt.axis('off')
+                
+                error_path = os.path.join(self.results_dir, f"{perspective_name}_term_importance_error.png")
+                plt.savefig(error_path)
+                plt.close()
+                
+                return error_path
             
             # Determine how many clusters to visualize (max 12 for readability)
-            n_clusters = min(12, len(characteristics))
+            n_clusters = min(12, len(valid_chars))
             
             # Sort clusters by size (descending)
-            sorted_clusters = sorted(characteristics, key=lambda x: x.get('size', 0), reverse=True)
+            sorted_clusters = sorted(valid_chars, key=lambda x: x.get('size', 0), reverse=True)
             clusters_to_visualize = sorted_clusters[:n_clusters]
             
             # Determine grid layout based on number of clusters
@@ -1679,8 +1691,10 @@ class ClusteringVisualizer:
             else:
                 n_rows, n_cols = 3, 4
             
-            # Create figure
+            # Create figure with better styling
+            plt.style.use('seaborn-v0_8-whitegrid')
             fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols*5, n_rows*4))
+            fig.subplots_adjust(hspace=0.4, wspace=0.3)
             axes = axes.flatten()  # Flatten to easily iterate
             
             # Generate plots for each cluster
@@ -1699,15 +1713,23 @@ class ClusteringVisualizer:
                         terms.append(term)
                         scores.append(score)
                 
+                if not terms:  # Skip if no terms
+                    axes[i].text(0.5, 0.5, "No terms data", ha='center', va='center')
+                    axes[i].set_title(f"Cluster {cluster.get('id', i)}")
+                    continue
+                    
                 # Reverse lists for bottom-to-top plotting
                 terms.reverse()
                 scores.reverse()
                 
-                # Plot horizontal bar chart
+                # Plot horizontal bar chart with improved styling
                 ax = axes[i]
-                colors = plt.cm.viridis(np.linspace(0.2, 0.8, len(terms)))
                 
-                bars = ax.barh(terms, scores, color=colors)
+                # Use colormap to make bars visually distinct
+                cmap = plt.cm.viridis
+                colors = cmap(np.linspace(0.2, 0.8, len(terms)))
+                
+                bars = ax.barh(terms, scores, color=colors, alpha=0.8)
                 
                 # Add values to bars
                 for bar in bars:
@@ -1721,20 +1743,28 @@ class ClusteringVisualizer:
                 ax.set_title(f"Cluster {cluster.get('id', i)}: {cluster_size} records ({cluster_pct:.1f}%)")
                 ax.set_xlabel('Term Importance Score')
                 
+                # Remove top and right spines
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                
                 # Adjust y-axis to fit long terms
                 plt.setp(ax.get_yticklabels(), fontsize=9)
+                
+                # Set x limit to make bars more visible
+                max_score = max(scores) if scores else 0
+                ax.set_xlim(0, max_score * 1.15)
             
             # Hide unused subplots
             for j in range(i+1, len(axes)):
                 axes[j].axis('off')
             
             # Add overall title
-            fig.suptitle(f'Top Terms by Importance for {perspective_name} Clusters', fontsize=16)
+            fig.suptitle(f'Top Terms by Importance for {perspective_name} Clusters', fontsize=16, y=0.98)
             
             # Adjust layout
             plt.tight_layout(rect=[0, 0, 1, 0.96])
             
-            # Save figure
+            # Save figure with high resolution
             file_path = os.path.join(self.results_dir, f"{perspective_name}_term_importance.png")
             plt.savefig(file_path, dpi=300, bbox_inches='tight')
             plt.close()
@@ -1756,7 +1786,7 @@ class ClusteringVisualizer:
             plt.close()
             
             return error_path
-
+    
     def create_cluster_size_distribution_plot(self, cluster_assignments, cluster_names, perspective_name):
         """
         Creates an enhanced visualization of cluster size distribution.

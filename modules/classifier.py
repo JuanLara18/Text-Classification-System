@@ -926,24 +926,15 @@ class ClusterLabeler:
         """
         Extracts detailed characteristics for a specific cluster.
         
-        This method analyzes a cluster and extracts key information including size,
-        percentage of total data, top terms based on TF-IDF scores, and representative
-        examples that illustrate the cluster's content.
-        
         Args:
             dataframe: DataFrame containing the data
             text_columns: List of text column names to analyze
             cluster_column: Column name containing cluster assignments
             cluster_id: ID of the cluster to analyze
             vectorizer: Optional pre-fitted TF-IDF vectorizer
-            
+                
         Returns:
-            Dictionary containing cluster characteristics:
-                - id: Cluster identifier
-                - size: Number of records in the cluster
-                - percentage: Percentage of total records
-                - top_terms: List of (term, score) tuples for most representative terms
-                - examples: List of representative example texts
+            Dictionary containing cluster characteristics
         """
         self.logger.info(f"Extracting characteristics for cluster {cluster_id} in column {cluster_column}")
         
@@ -966,34 +957,45 @@ class ClusterLabeler:
             total_records = len(dataframe[dataframe[cluster_column].notna()])
             percentage = (cluster_size / total_records) * 100
             
-            # Select examples from the cluster
-            examples = self.select_representative_examples(
-                dataframe, text_columns, cluster_column, cluster_id
-            )
+            # Initialize vectorizer if not provided
+            if vectorizer is None:
+                # Create a fresh TF-IDF vectorizer for this specific cluster analysis
+                vectorizer = TfidfVectorizer(
+                    max_features=3000,
+                    stop_words='english',
+                    ngram_range=(1, 3),  # Include up to trigrams
+                    min_df=2,
+                    max_df=0.85  # Ignore terms that appear in >85% of documents
+                )
             
-            # Extract top terms if vectorizer is provided
+            # Combine text from columns for records in this cluster
+            cluster_data = dataframe[cluster_mask]
+            combined_texts = []
+            
+            for _, row in cluster_data.iterrows():
+                combined_text = ' '.join([str(row[col]) for col in text_columns if pd.notna(row[col])])
+                if combined_text.strip():  # Only add non-empty texts
+                    combined_texts.append(combined_text)
+            
             top_terms = []
-            if vectorizer:
-                # Combine text from columns for records in this cluster
-                cluster_texts = []
-                for _, row in dataframe[cluster_mask].iterrows():
-                    combined_text = ' '.join([str(row[col]) for col in text_columns if pd.notna(row[col])])
-                    if combined_text.strip():
-                        cluster_texts.append(combined_text)
+            if combined_texts:
+                # Fit and transform texts to TF-IDF
+                vectors = vectorizer.fit_transform(combined_texts)
                 
-                if cluster_texts:
-                    # Transform texts to TF-IDF
-                    cluster_vectors = vectorizer.transform(cluster_texts)
-                    
-                    # Calculate average vector (centroid)
-                    centroid = cluster_vectors.mean(axis=0).A1
-                    
-                    # Get feature names
-                    feature_names = vectorizer.get_feature_names_out()
-                    
-                    # Get top terms
-                    top_indices = centroid.argsort()[-15:][::-1]
-                    top_terms = [(feature_names[idx], float(centroid[idx])) for idx in top_indices]
+                # Calculate average vector (centroid)
+                centroid = vectors.mean(axis=0).A1
+                
+                # Get feature names
+                feature_names = vectorizer.get_feature_names_out()
+                
+                # Get top terms
+                top_indices = centroid.argsort()[-20:][::-1]  # Get more terms
+                top_terms = [(feature_names[idx], float(centroid[idx])) for idx in top_indices]
+            
+            # Select diverse, representative examples
+            examples = self.select_representative_examples(
+                dataframe, text_columns, cluster_column, cluster_id, n_samples=5
+            )
             
             # Create and return characteristics dictionary
             characteristics = {
@@ -1017,41 +1019,69 @@ class ClusterLabeler:
                 'top_terms': [],
                 'examples': []
             }
-        
+         
     def create_detailed_naming_prompt(self, characteristics, perspective_name, domain_context=None):
         """
-        Creates a detailed prompt for OpenAI to generate high-quality cluster labels.
+        Creates a comprehensive and effective prompt for OpenAI to generate high-quality cluster labels.
         
-        This method constructs a structured prompt containing rich context about each 
-        cluster, providing clear guidelines for naming and including representative
-        examples and key terms.
+        This method constructs a carefully engineered prompt with clear instructions,
+        cluster data, and formatting requirements to obtain meaningful and distinctive
+        cluster labels regardless of the data domain.
         
         Args:
             characteristics: List of cluster characteristic dictionaries 
                             (from extract_cluster_characteristics)
             perspective_name: Name of the clustering perspective (e.g., "Content Categories")
             domain_context: Optional domain-specific context to guide naming (default: None)
-            
+                
         Returns:
             String containing the formatted prompt for OpenAI
         """
         self.logger.info(f"Creating detailed naming prompt for {perspective_name} clusters")
         
-        # Default domain context if none provided
-        if not domain_context:
-            domain_context = "educational materials and learning assets"
+        # Infer domain context if possible when none is provided
+        if not domain_context and characteristics and len(characteristics) > 0:
+            # Try to infer domain from common terms across clusters
+            all_terms = []
+            for cluster in characteristics:
+                if 'top_terms' in cluster and cluster['top_terms']:
+                    all_terms.extend([term for term, _ in cluster['top_terms'][:5]])
+            
+            # Get most common terms that might indicate domain
+            if all_terms:
+                term_counter = Counter(all_terms)
+                common_terms = [term for term, count in term_counter.most_common(10)]
+                inferred_domain = ", ".join(common_terms)
+                domain_context = f"data related to {inferred_domain}"
+            else:
+                domain_context = "the provided data"
+        elif not domain_context:
+            domain_context = "the provided data"
         
         # Create main header and guidelines
         prompt = [
             f"# Cluster Naming Task: {perspective_name}",
-            f"\nObjective: Create precise, descriptive names for {len(characteristics)} clusters of {domain_context}.",
+            f"\nYou are an expert in data analysis tasked with creating descriptive, meaningful names for {len(characteristics)} clusters of {domain_context}.",
+            "\n## Objective",
+            f"Create precise, descriptive names for each cluster that clearly communicate the distinct theme or pattern represented by that cluster.",
+            
             "\n## Guidelines:",
-            "- Generate concise yet descriptive names (3-5 words) that capture the core theme of each cluster",
-            "- Use domain-appropriate terminology related to learning materials and educational content",
-            "- Ensure names are distinctive and non-overlapping between clusters",
-            "- Prioritize subject matter and content theme over format or metadata characteristics",
-            "- Names should be immediately understandable to educators and content designers",
-            "- Avoid generic names like 'General Information' or 'Miscellaneous Content'",
+            "- Generate concise (3-5 words) yet descriptive names that capture the core concept of each cluster",
+            "- Focus on what makes each cluster DISTINCTIVE from other clusters",
+            "- Names should be specific and meaningful, not generic or vague",
+            "- Base names on key terminology, topics, or themes evident in the cluster data",
+            "- Prioritize nouns and specialized terminology that reveal the subject matter",
+            "- Avoid generic labels like 'Group A', 'Basic Information', or 'Miscellaneous Content'",
+            "- If clusters represent clear categories, use category names",
+            "- If clusters represent different aspects of the same topic, highlight the distinguishing aspect",
+            "- Use consistent naming style and specificity level across all clusters",
+            
+            "\n## DO NOT:",
+            "- Do not use generic descriptors that could apply to multiple clusters",
+            "- Do not use cluster numbers in the names",
+            "- Do not create overly long names (keep to 5 words maximum)",
+            "- Do not use terms like 'miscellaneous' or 'other' unless truly appropriate",
+            
             f"\n## {perspective_name} Clusters Analysis"
         ]
         
@@ -1070,30 +1100,48 @@ class ClusterLabeler:
             
             # Add key terms section if available
             if 'top_terms' in cluster and cluster['top_terms']:
-                prompt.append("\n#### Key Terms (with weights):")
+                prompt.append("\n#### Top Terms (with importance weights):")
                 term_strings = []
-                for term, score in cluster['top_terms'][:10]:  # Limit to top 10 terms
+                for term, score in cluster['top_terms'][:15]:  # Include up to 15 terms for context
                     term_strings.append(f"{term} ({score:.3f})")
                 prompt.append(", ".join(term_strings))
             
             # Add examples section if available
             if 'examples' in cluster and cluster['examples']:
                 prompt.append("\n#### Representative Examples:")
-                for i, example in enumerate(cluster['examples'][:3]):  # Limit to 3 examples
-                    # Truncate long examples
-                    short_example = example[:200] + "..." if len(example) > 200 else example
-                    prompt.append(f"{i+1}. {short_example}")
+                # Limit number of examples based on their length to manage token usage
+                examples_to_show = min(3, len(cluster['examples']))
+                for i in range(examples_to_show):
+                    example = cluster['examples'][i]
+                    # Truncate long examples to manage token usage
+                    display_length = min(250, len(example))
+                    if display_length < len(example):
+                        display_example = example[:display_length] + "..."
+                    else:
+                        display_example = example
+                    prompt.append(f"{i+1}. {display_example}")
         
-        # Add response format instructions
+        # Add response format instructions with examples
         prompt.extend([
             "\n## Response Format",
-            "Provide a JSON array with exactly one name for each cluster:",
+            "Provide a JSON array with one descriptive name for each cluster:",
+            '```json',
             '{"cluster_names": [',
-            '  "Descriptive name for cluster 0",',
-            '  "Descriptive name for cluster 1",',
+            '  "Name for Cluster 0",',
+            '  "Name for Cluster 1",',
+            '  "Name for Cluster 2",',
             '  ...',
             ']}',
-            "\nEnsure each name reflects the distinctive content of its cluster and is relevant to the domain."
+            '```',
+            "\n## Examples of Good vs Poor Naming",
+            "✓ GOOD: \"Network Security Protocols\" (specific, descriptive, focused)",
+            "✓ GOOD: \"Mobile UI Design\" (clear domain with specialization)",
+            "✓ GOOD: \"Financial Risk Analysis\" (subject matter focused)",
+            "✗ POOR: \"Important Information\" (vague, non-specific)",
+            "✗ POOR: \"Group 3 Content\" (uses cluster number, non-descriptive)",
+            "✗ POOR: \"Basic Material with Some Advanced Topics\" (too long and vague)",
+            
+            "\nEnsure each cluster name clearly communicates the distinctive content or pattern in that specific cluster."
         ])
         
         # Join all parts into a single string

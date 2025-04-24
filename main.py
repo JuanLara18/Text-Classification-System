@@ -469,6 +469,13 @@ class ClassificationPipeline:
                 self.logger.info(f"Evaluating perspective: {perspective_name}")
                 self.performance_monitor.start_timer(f'evaluate_{perspective_name}')
                 
+                # Initialize result dictionary for this perspective
+                evaluation_results[perspective_name] = {
+                    'metrics': {},
+                    'visualization_paths': {},
+                    'report_paths': {}
+                }
+                
                 # Skip if features or assignments are missing
                 combined_key = f"{perspective_name}_combined"
                 if combined_key not in features_dict or perspective_name not in cluster_assignments_dict:
@@ -481,8 +488,9 @@ class ClassificationPipeline:
                 try:
                     # Evaluate clustering
                     metrics = self.evaluator.evaluate_clustering(features, assignments)
+                    evaluation_results[perspective_name]['metrics'] = metrics
                     
-                    # Inicializar visualization_paths antes de usarlo
+                    # Initialize visualization_paths
                     visualization_paths = {}
                     
                     # Perform enhanced cluster analysis if configured
@@ -535,15 +543,9 @@ class ClassificationPipeline:
                             report_path = self.reporter.generate_detailed_cluster_report(
                                 perspective_name, characteristics, visualization_paths
                             )
-                            
-                            if 'report_paths' not in evaluation_results[perspective_name]:
-                                evaluation_results[perspective_name]['report_paths'] = {}
-                            
                             evaluation_results[perspective_name]['report_paths']['detailed_report'] = report_path                    
                     
-                    # Generate visualizations
-                    visualization_paths = {}
-                    
+                    # Generate standard visualizations
                     if 'embeddings_plot' in visualization_types:
                         viz_path = self.visualizer.create_embeddings_plot(features, assignments, perspective_name)
                         visualization_paths['embeddings_plot'] = viz_path
@@ -556,15 +558,12 @@ class ClassificationPipeline:
                         viz_path = self.visualizer.create_distribution_plot(assignments, perspective_name)
                         visualization_paths['distribution_plot'] = viz_path
                     
+                    # Store visualization paths
+                    evaluation_results[perspective_name]['visualization_paths'] = visualization_paths
+                    
                     # Generate report
                     report_paths = self.reporter.generate_report(perspective_name, metrics, visualization_paths)
-                    
-                    # Store results
-                    evaluation_results[perspective_name] = {
-                        'metrics': metrics,
-                        'visualization_paths': visualization_paths,
-                        'report_paths': report_paths
-                    }
+                    evaluation_results[perspective_name]['report_paths'].update(report_paths)
                     
                     self.logger.info(f"Evaluation and reporting completed for perspective {perspective_name}")
                     
@@ -590,7 +589,7 @@ class ClassificationPipeline:
             self.logger.error(f"Error during evaluation and reporting: {str(e)}")
             self.logger.error(traceback.format_exc())
             return None
-
+        
     def perform_cross_perspective_analysis(self, dataframe, evaluation_results):
         """
         Performs analysis across different clustering perspectives.
