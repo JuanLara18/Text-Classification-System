@@ -44,7 +44,7 @@ The system enhances your dataset with new classification columns while providing
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/text-classification-system.git
+   git clone https://github.com/JuanLara18/Text-Classification-System.git
    cd text-classification-system
    ```
 
