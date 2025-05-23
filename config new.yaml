@@ -1,0 +1,130 @@
+# Enhanced config.yaml - Add this to your clustering_perspectives section
+
+clustering_perspectives:
+  # Existing clustering perspectives (unchanged)
+  content_categories:
+    type: "clustering"  # New explicit type field
+    columns: [shortDescription_value_english, title_value_english]
+    algorithm: "kmeans"
+    # ... rest of existing config
+
+  # NEW: AI-powered classification perspectives
+  position_classification:
+    type: "openai_classification"
+    columns: 
+      - position_name_english
+      - shortDescription_value_english
+    target_categories:
+      - "Executive & Strategy"
+      - "Legal, Compliance & Risk"
+      - "Engineering & Technology"
+      - "Sales & Marketing"
+      - "Human Resources"
+      - "Finance & Accounting"
+      - "Operations & Project Management"
+      - "Customer Support"
+      - "Research & Development"
+      - "Creative & Design"
+    output_column: "ai_position_category"
+    
+    # OpenAI Configuration
+    llm_config:
+      provider: "openai"
+      model: "gpt-3.5-turbo-0125"
+      temperature: 0.0
+      max_tokens: 50
+      timeout: 30
+      max_retries: 3
+      backoff_factor: 2
+    
+    # Classification Configuration
+    classification_config:
+      unknown_category: "Other/Unknown"
+      confidence_threshold: 0.7
+      batch_size: 10
+      include_unknown_in_categories: true
+      prompt_template: |
+        Classify the following job position into one of these categories:
+        {categories}
+        
+        Position Details:
+        Title: {title}
+        Description: {description}
+        
+        Respond with ONLY the category name. If uncertain, respond with "{unknown_category}".
+      
+      # Few-shot examples (optional)
+      few_shot_examples:
+        - input: "Senior Software Engineer - Full Stack Development"
+          output: "Engineering & Technology"
+        - input: "Chief Marketing Officer"
+          output: "Executive & Strategy"
+        - input: "Paralegal Assistant"
+          output: "Legal, Compliance & Risk"
+    
+    # Validation and Quality Control
+    validation:
+      strict_category_matching: true
+      fallback_strategy: "unknown"  # Options: "unknown", "retry", "manual_review"
+      quality_checks:
+        min_confidence: 0.5
+        flag_ambiguous: true
+
+  # Another example: Learning content classification
+  learning_content_type:
+    type: "openai_classification"
+    columns:
+      - title_value_english
+      - description_value_english
+    target_categories:
+      - "Technical Training"
+      - "Soft Skills Development"
+      - "Compliance Training"
+      - "Leadership Development"
+      - "Product Training"
+      - "Safety Training"
+      - "Onboarding"
+    output_column: "content_type_ai"
+    
+    llm_config:
+      provider: "openai"
+      model: "gpt-4o-mini"  # More capable model for complex content
+      temperature: 0.1
+      max_tokens: 30
+    
+    classification_config:
+      unknown_category: "General Training"
+      batch_size: 15
+      prompt_template: |
+        Analyze this learning content and classify it into one of these training types:
+        {categories}
+        
+        Content Title: {title}
+        Content Description: {description}
+        
+        Category:
+
+# Enhanced global configuration for AI classification
+ai_classification:
+  # Cost and usage management
+  cost_management:
+    max_cost_per_run: 50.0  # USD
+    track_token_usage: true
+    cost_alerts: true
+  
+  # Caching configuration
+  caching:
+    enabled: true
+    cache_duration_days: 30
+    cache_directory: "../Classification_Learning_Assets/ai_cache"
+    
+  # Rate limiting
+  rate_limiting:
+    requests_per_minute: 100
+    batch_delay_seconds: 1
+    
+  # Monitoring and logging
+  monitoring:
+    log_api_calls: true
+    save_raw_responses: false  # For debugging
+    track_classification_accuracy: true

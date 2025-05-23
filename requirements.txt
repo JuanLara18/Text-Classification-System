@@ -19,5 +19,4 @@ fastapi
 uvicorn
 nltk
 psutil
-yaml
 kaleido

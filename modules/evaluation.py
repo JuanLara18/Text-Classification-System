@@ -21,6 +21,251 @@ import logging
 import seaborn as sns
 
 
+class ClassificationEvaluator:
+    """Evaluator for AI classification results."""
+    
+    def __init__(self, config, logger):
+        self.config = config
+        self.logger = logger
+        self.logger.info("ClassificationEvaluator initialized")
+    
+    def evaluate_classification(self, classifications: List[str], categories: List[str], metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Evaluates AI classification results.
+        
+        Args:
+            classifications: List of classification results
+            categories: List of target categories
+            metadata: Optional metadata from classification process
+            
+        Returns:
+            Dictionary of evaluation metrics
+        """
+        self.logger.info("Evaluating AI classification results")
+        
+        try:
+            # Basic statistics
+            total_classified = len(classifications)
+            distribution = Counter(classifications)
+            
+            # Calculate coverage and balance metrics
+            unique_categories = set(classifications)
+            categories_used = len(unique_categories)
+            coverage_ratio = categories_used / len(categories) if categories else 0
+            
+            # Calculate balance metrics
+            max_count = max(distribution.values()) if distribution else 0
+            min_count = min(distribution.values()) if distribution else 0
+            balance_ratio = min_count / max_count if max_count > 0 else 0
+            
+            # Calculate entropy (measure of distribution uniformity)
+            total = sum(distribution.values())
+            probabilities = [count / total for count in distribution.values()]
+            entropy = -sum(p * np.log2(p) for p in probabilities if p > 0)
+            max_entropy = np.log2(len(distribution)) if len(distribution) > 1 else 0
+            normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0
+            
+            # Detect potential issues
+            issues = []
+            if coverage_ratio < 0.5:
+                issues.append(f"Low category coverage: only {categories_used}/{len(categories)} categories used")
+            if balance_ratio < 0.1:
+                issues.append(f"Highly imbalanced distribution: ratio {balance_ratio:.3f}")
+            if normalized_entropy < 0.5:
+                issues.append("Low distribution entropy: classifications may be too concentrated")
+            
+            # Calculate cost metrics if available
+            cost_metrics = {}
+            if metadata:
+                cost_metrics = {
+                    'total_cost': metadata.get('total_cost', 0),
+                    'cost_per_classification': metadata.get('total_cost', 0) / total_classified if total_classified > 0 else 0,
+                    'total_tokens': metadata.get('total_tokens', 0),
+                    'api_calls': metadata.get('api_calls', 0),
+                    'cached_responses': metadata.get('cached_responses', 0),
+                    'cache_hit_rate': metadata.get('cached_responses', 0) / total_classified if total_classified > 0 else 0,
+                    'errors': metadata.get('errors', 0),
+                    'error_rate': metadata.get('errors', 0) / total_classified if total_classified > 0 else 0
+                }
+            
+            # Compile results
+            evaluation_results = {
+                'total_classified': total_classified,
+                'categories_used': categories_used,
+                'total_categories': len(categories),
+                'coverage_ratio': coverage_ratio,
+                'balance_ratio': balance_ratio,
+                'entropy': entropy,
+                'normalized_entropy': normalized_entropy,
+                'distribution': dict(distribution),
+                'issues': issues,
+                'cost_metrics': cost_metrics,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            self.logger.info(f"Classification evaluation completed: {total_classified} items, {categories_used}/{len(categories)} categories used")
+            if issues:
+                for issue in issues:
+                    self.logger.warning(f"Classification issue detected: {issue}")
+            
+            return evaluation_results
+            
+        except Exception as e:
+            self.logger.error(f"Error during classification evaluation: {str(e)}")
+            return {"error": str(e)}
+
+
+class ClassificationVisualizer:
+    """Visualizer for AI classification results."""
+    
+    def __init__(self, config, logger, results_dir):
+        self.config = config
+        self.logger = logger
+        self.results_dir = results_dir
+        os.makedirs(self.results_dir, exist_ok=True)
+    
+    def create_classification_distribution_plot(self, classifications: List[str], perspective_name: str, target_categories: List[str] = None) -> str:
+        """
+        Creates a distribution plot for classification results.
+        
+        Args:
+            classifications: List of classification results
+            perspective_name: Name of the perspective
+            target_categories: Optional list of expected categories for comparison
+            
+        Returns:
+            Path to the saved visualization
+        """
+        self.logger.info(f"Creating classification distribution plot for {perspective_name}")
+        
+        try:
+            # Count classifications
+            distribution = Counter(classifications)
+            
+            # Prepare data for plotting
+            categories = list(distribution.keys())
+            counts = list(distribution.values())
+            percentages = [count / len(classifications) * 100 for count in counts]
+            
+            # Sort by count (descending)
+            sorted_data = sorted(zip(categories, counts, percentages), key=lambda x: x[1], reverse=True)
+            categories, counts, percentages = zip(*sorted_data)
+            
+            # Create figure with subplots
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+            
+            # Bar plot
+            bars = ax1.bar(range(len(categories)), counts, color='skyblue', alpha=0.8)
+            ax1.set_xlabel('Categories')
+            ax1.set_ylabel('Number of Classifications')
+            ax1.set_title(f'Classification Distribution - {perspective_name}')
+            ax1.set_xticks(range(len(categories)))
+            ax1.set_xticklabels(categories, rotation=45, ha='right')
+            
+            # Add value labels on bars
+            for bar, count, pct in zip(bars, counts, percentages):
+                height = bar.get_height()
+                ax1.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                        f'{count}\n({pct:.1f}%)', ha='center', va='bottom')
+            
+            # Pie chart
+            colors = plt.cm.Set3(np.linspace(0, 1, len(categories)))
+            wedges, texts, autotexts = ax2.pie(counts, labels=categories, autopct='%1.1f%%', 
+                                             colors=colors, startangle=90)
+            ax2.set_title(f'Classification Distribution - {perspective_name}')
+            
+            # Improve text readability
+            for autotext in autotexts:
+                autotext.set_color('white')
+                autotext.set_fontweight('bold')
+            
+            plt.tight_layout()
+            
+            # Save plot
+            file_path = os.path.join(self.results_dir, f"{perspective_name}_classification_distribution.png")
+            plt.savefig(file_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            self.logger.info(f"Classification distribution plot saved to {file_path}")
+            return file_path
+            
+        except Exception as e:
+            self.logger.error(f"Error creating classification distribution plot: {str(e)}")
+            
+            # Create error plot
+            plt.figure(figsize=(8, 6))
+            plt.text(0.5, 0.5, f"Error creating plot: {str(e)}", 
+                    horizontalalignment='center', fontsize=12, color='red')
+            plt.axis('off')
+            
+            error_path = os.path.join(self.results_dir, f"{perspective_name}_classification_error.png")
+            plt.savefig(error_path)
+            plt.close()
+            
+            return error_path
+    
+    def create_classification_comparison_plot(self, perspective_results: Dict[str, List[str]], perspective_names: List[str]) -> str:
+        """
+        Creates a comparison plot across multiple classification perspectives.
+        
+        Args:
+            perspective_results: Dictionary mapping perspective names to classification results
+            perspective_names: List of perspective names for ordering
+            
+        Returns:
+            Path to the saved visualization
+        """
+        self.logger.info("Creating classification comparison plot")
+        
+        try:
+            # Prepare data
+            all_categories = set()
+            for classifications in perspective_results.values():
+                all_categories.update(classifications)
+            
+            all_categories = sorted(list(all_categories))
+            
+            # Create comparison matrix
+            comparison_data = []
+            for perspective in perspective_names:
+                if perspective in perspective_results:
+                    distribution = Counter(perspective_results[perspective])
+                    total = len(perspective_results[perspective])
+                    percentages = [distribution.get(cat, 0) / total * 100 for cat in all_categories]
+                    comparison_data.append(percentages)
+            
+            comparison_data = np.array(comparison_data)
+            
+            # Create heatmap
+            plt.figure(figsize=(max(12, len(all_categories) * 0.8), len(perspective_names) * 0.8 + 2))
+            
+            sns.heatmap(comparison_data, 
+                       xticklabels=all_categories, 
+                       yticklabels=perspective_names,
+                       annot=True, 
+                       fmt='.1f', 
+                       cmap='YlOrRd',
+                       cbar_kws={'label': 'Percentage (%)'})
+            
+            plt.title('Classification Distribution Comparison Across Perspectives')
+            plt.xlabel('Categories')
+            plt.ylabel('Perspectives')
+            plt.xticks(rotation=45, ha='right')
+            plt.tight_layout()
+            
+            # Save plot
+            file_path = os.path.join(self.results_dir, "classification_perspectives_comparison.png")
+            plt.savefig(file_path, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            self.logger.info(f"Classification comparison plot saved to {file_path}")
+            return file_path
+            
+        except Exception as e:
+            self.logger.error(f"Error creating classification comparison plot: {str(e)}")
+            return None
+
+
 class ClusteringEvaluator:
     """Evaluator for clustering results."""
 
@@ -40,7 +285,36 @@ class ClusteringEvaluator:
             'davies_bouldin_score', 
             'calinski_harabasz_score'
         ])
+        self.classification_evaluator = ClassificationEvaluator(config, logger)
+        
         self.logger.info(f"ClusteringEvaluator initialized with metrics: {self.metrics}")
+
+    def evaluate_perspective(self, perspective_type: str, perspective_name: str, **kwargs) -> Dict[str, Any]:
+        """
+        NEW METHOD: Evaluates either clustering or classification perspective.
+        
+        Args:
+            perspective_type: Type of perspective ('clustering' or 'openai_classification')
+            perspective_name: Name of the perspective
+            **kwargs: Additional arguments specific to the perspective type
+            
+        Returns:
+            Dictionary of evaluation metrics
+        """
+        if perspective_type == 'clustering':
+            features = kwargs.get('features')
+            cluster_assignments = kwargs.get('cluster_assignments')
+            return self.evaluate_clustering(features, cluster_assignments)
+        
+        elif perspective_type == 'openai_classification':
+            classifications = kwargs.get('classifications')
+            categories = kwargs.get('categories')
+            metadata = kwargs.get('metadata')
+            return self.classification_evaluator.evaluate_classification(classifications, categories, metadata)
+        
+        else:
+            self.logger.error(f"Unknown perspective type: {perspective_type}")
+            return {"error": f"Unknown perspective type: {perspective_type}"}
 
     def evaluate_clustering(self, features, cluster_assignments):
         """
@@ -3289,6 +3563,7 @@ class EvaluationReporter:
                 """)
             
             return error_path
+
 
 class ClusterAnalyzer:
     """

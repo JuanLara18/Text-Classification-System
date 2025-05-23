@@ -585,6 +585,285 @@ class ConfigManager:
         """
         return self.config.get('cluster_analysis', {})
 
+    def validate_config(self):
+        """
+        Validates the configuration for required parameters and consistency.
+        UPDATED to handle AI classification perspectives.
+        """
+        if not self.config:
+            raise ConfigurationError("Configuration is empty or not loaded")
+        
+        # Check required parameters
+        missing_params = []
+        for param in self.REQUIRED_PARAMS:
+            if param not in self.config or self.config[param] is None:
+                missing_params.append(param)
+        
+        if missing_params:
+            raise ConfigurationError(f"Required parameters missing in configuration: {', '.join(missing_params)}")
+        
+        # Validate text columns
+        if not isinstance(self.config['text_columns'], list) or not self.config['text_columns']:
+            raise ConfigurationError("text_columns must be a non-empty list")
+        
+        # Validate clustering perspectives
+        perspectives = self.config.get('clustering_perspectives', {})
+        if not perspectives or not isinstance(perspectives, dict):
+            raise ConfigurationError("clustering_perspectives must be a non-empty dictionary")
+        
+        perspective_errors = []
+        for name, perspective in perspectives.items():
+            if not isinstance(perspective, dict):
+                perspective_errors.append(f"Perspective '{name}' must be a dictionary")
+                continue
+            
+            # Get perspective type (default to clustering for backward compatibility)
+            perspective_type = perspective.get('type', 'clustering')
+            
+            if perspective_type == 'clustering':
+                # Validate clustering perspective
+                self._validate_clustering_perspective(name, perspective, perspective_errors)
+            elif perspective_type == 'openai_classification':
+                # Validate AI classification perspective
+                self._validate_ai_classification_perspective(name, perspective, perspective_errors)
+            else:
+                perspective_errors.append(f"Perspective '{name}' has unknown type: {perspective_type}")
+        
+        if perspective_errors:
+            raise ConfigurationError("Configuration validation failed:\n" + "\n".join(perspective_errors))
+        
+        # Validate AI classification global settings if any AI perspectives exist
+        self._validate_ai_classification_global_config(perspectives)
+        
+        # Create necessary directories
+        self._create_directories()
+        
+        return True
+    
+    def _validate_clustering_perspective(self, name: str, perspective: dict, errors: list):
+        """Validate a clustering perspective configuration."""
+        # Check required fields for clustering
+        required_fields = ['columns', 'algorithm', 'output_column']
+        missing_fields = []
+        for field in required_fields:
+            if field not in perspective:
+                missing_fields.append(field)
+        
+        if missing_fields:
+            errors.append(f"Clustering perspective '{name}' is missing required fields: {', '.join(missing_fields)}")
+            return
+        
+        # Validate columns
+        if not isinstance(perspective['columns'], list) or not perspective['columns']:
+            errors.append(f"Clustering perspective '{name}' 'columns' must be a non-empty list")
+            return
+        
+        # Check if all columns exist in text_columns
+        invalid_columns = []
+        for column in perspective['columns']:
+            if column not in self.config['text_columns']:
+                invalid_columns.append(column)
+        
+        if invalid_columns:
+            errors.append(
+                f"Clustering perspective '{name}' references columns not defined in text_columns: {', '.join(invalid_columns)}"
+            )
+        
+        # Validate algorithm-specific parameters
+        algorithm = perspective.get('algorithm', '').lower()
+        if algorithm == 'hdbscan':
+            params = perspective.get('params', {})
+            min_cluster_size = params.get('min_cluster_size', 0)
+            if min_cluster_size < 10:
+                errors.append(f"Clustering perspective '{name}': HDBSCAN min_cluster_size should be at least 10 to avoid over-fragmentation")
+    
+    def _validate_ai_classification_perspective(self, name: str, perspective: dict, errors: list):
+        """Validate an AI classification perspective configuration."""
+        # Check required fields for AI classification
+        required_fields = ['columns', 'target_categories', 'output_column']
+        missing_fields = []
+        for field in required_fields:
+            if field not in perspective:
+                missing_fields.append(field)
+        
+        if missing_fields:
+            errors.append(f"AI classification perspective '{name}' is missing required fields: {', '.join(missing_fields)}")
+            return
+        
+        # Validate columns
+        if not isinstance(perspective['columns'], list) or not perspective['columns']:
+            errors.append(f"AI classification perspective '{name}' 'columns' must be a non-empty list")
+            return
+        
+        # Check if all columns exist in text_columns
+        invalid_columns = []
+        for column in perspective['columns']:
+            if column not in self.config['text_columns']:
+                invalid_columns.append(column)
+        
+        if invalid_columns:
+            errors.append(
+                f"AI classification perspective '{name}' references columns not defined in text_columns: {', '.join(invalid_columns)}"
+            )
+        
+        # Validate target categories
+        target_categories = perspective.get('target_categories', [])
+        if not isinstance(target_categories, list) or len(target_categories) < 2:
+            errors.append(f"AI classification perspective '{name}' must have at least 2 target_categories")
+        
+        # Check for duplicate categories
+        if len(target_categories) != len(set(target_categories)):
+            errors.append(f"AI classification perspective '{name}' has duplicate target_categories")
+        
+        # Validate LLM configuration
+        llm_config = perspective.get('llm_config', {})
+        provider = llm_config.get('provider', 'openai')
+        
+        if provider == 'openai':
+            # Check for API key environment variable
+            api_key_env = llm_config.get('api_key_env', 'OPENAI_API_KEY')
+            if not os.environ.get(api_key_env):
+                errors.append(f"AI classification perspective '{name}': OpenAI API key not found in environment variable '{api_key_env}'")
+            
+            # Validate model
+            model = llm_config.get('model', 'gpt-3.5-turbo-0125')
+            valid_models = [
+                'gpt-3.5-turbo', 'gpt-3.5-turbo-0125', 'gpt-3.5-turbo-1106',
+                'gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-4'
+            ]
+            if model not in valid_models:
+                errors.append(f"AI classification perspective '{name}': Unknown OpenAI model '{model}'. Consider using one of: {', '.join(valid_models[:3])}")
+        else:
+            errors.append(f"AI classification perspective '{name}': Unsupported LLM provider '{provider}'. Currently only 'openai' is supported.")
+        
+        # Validate temperature range
+        temperature = llm_config.get('temperature', 0.0)
+        if not (0.0 <= temperature <= 2.0):
+            errors.append(f"AI classification perspective '{name}': Temperature must be between 0.0 and 2.0")
+        
+        # Validate classification configuration
+        classification_config = perspective.get('classification_config', {})
+        batch_size = classification_config.get('batch_size', 10)
+        if not (1 <= batch_size <= 100):
+            errors.append(f"AI classification perspective '{name}': batch_size must be between 1 and 100")
+    
+    def _validate_ai_classification_global_config(self, perspectives: dict):
+        """Validate global AI classification configuration."""
+        # Check if any AI classification perspectives exist
+        has_ai_perspectives = any(
+            p.get('type') == 'openai_classification' 
+            for p in perspectives.values()
+        )
+        
+        if not has_ai_perspectives:
+            return  # No validation needed
+        
+        # Validate global AI classification config
+        ai_config = self.config.get('ai_classification', {})
+        
+        # Validate cost management
+        cost_config = ai_config.get('cost_management', {})
+        max_cost = cost_config.get('max_cost_per_run', 50.0)
+        if max_cost <= 0:
+            raise ConfigurationError("ai_classification.cost_management.max_cost_per_run must be positive")
+        
+        # Validate rate limiting
+        rate_config = ai_config.get('rate_limiting', {})
+        requests_per_minute = rate_config.get('requests_per_minute', 100)
+        if not (1 <= requests_per_minute <= 1000):
+            raise ConfigurationError("ai_classification.rate_limiting.requests_per_minute must be between 1 and 1000")
+        
+        # Validate caching directory
+        cache_config = ai_config.get('caching', {})
+        if cache_config.get('enabled', True):
+            cache_dir = cache_config.get('cache_directory', 'ai_cache')
+            try:
+                os.makedirs(cache_dir, exist_ok=True)
+            except Exception as e:
+                raise ConfigurationError(f"Cannot create AI classification cache directory '{cache_dir}': {e}")
+    
+    def get_ai_classification_config(self):
+        """
+        Gets AI classification global configuration.
+        
+        Returns:
+            dict: AI classification configuration
+        """
+        return self.config.get('ai_classification', {})
+    
+    def get_ai_classification_perspectives(self):
+        """
+        Gets only the AI classification perspectives.
+        
+        Returns:
+            dict: AI classification perspectives
+        """
+        perspectives = self.get_clustering_perspectives()
+        return {
+            name: config for name, config in perspectives.items()
+            if config.get('type') == 'openai_classification'
+        }
+    
+    def get_clustering_only_perspectives(self):
+        """
+        Gets only the traditional clustering perspectives.
+        
+        Returns:
+            dict: Clustering perspectives
+        """
+        perspectives = self.get_clustering_perspectives()
+        return {
+            name: config for name, config in perspectives.items()
+            if config.get('type', 'clustering') == 'clustering'
+        }
+    
+    def has_ai_classification_perspectives(self):
+        """
+        Checks if the configuration has any AI classification perspectives.
+        
+        Returns:
+            bool: True if AI classification perspectives exist
+        """
+        return len(self.get_ai_classification_perspectives()) > 0
+
+    # Update the existing _create_directories method to include AI cache directory
+    def _create_directories(self):
+        """
+        Creates directories for output files if they don't exist.
+        UPDATED to include AI classification cache directory.
+        """
+        # Create directories for output files
+        for path_key in ['output_file', 'results_dir']:
+            if path_key in self.config and self.config[path_key]:
+                directory = os.path.dirname(self.config[path_key])
+                if not os.path.exists(directory):
+                    self.logger.info(f"Creating directory: {directory}")
+                    os.makedirs(directory, exist_ok=True)
+        
+        # Create nested directories
+        if 'checkpoint' in self.config and 'directory' in self.config['checkpoint'] and self.config['checkpoint'].get('enabled', True):
+            directory = self.config['checkpoint']['directory']
+            if not os.path.exists(directory):
+                self.logger.info(f"Creating checkpoint directory: {directory}")
+                os.makedirs(directory, exist_ok=True)
+        
+        if 'logging' in self.config and 'log_file' in self.config['logging']:
+            log_file = self.config['logging']['log_file']
+            if log_file:
+                directory = os.path.dirname(log_file)
+                if directory and not os.path.exists(directory):
+                    self.logger.info(f"Creating log directory: {directory}")
+                    os.makedirs(directory, exist_ok=True)
+        
+        # NEW: Create AI classification cache directory
+        ai_config = self.config.get('ai_classification', {})
+        cache_config = ai_config.get('caching', {})
+        if cache_config.get('enabled', True):
+            cache_dir = cache_config.get('cache_directory', 'ai_cache')
+            if not os.path.exists(cache_dir):
+                self.logger.info(f"Creating AI classification cache directory: {cache_dir}")
+                os.makedirs(cache_dir, exist_ok=True)
+
 def configure_argument_parser():
     """
     Configures an argument parser for the application.
