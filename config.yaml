@@ -1,210 +1,193 @@
-# Comprehensive Classification System Configuration
-# Optimized for clustering accuracy, feature quality, and interpretable results
+# AI Classification System Configuration
+# Optimized for: HR position classification using ChatGPT
+# Target: Classify position_name_english into predefined categories
 
 #######################
 # File paths and basics
 #######################
-input_file: "../Classification_Learning_Assets/input/Learning_Assets_translated.dta"
-output_file: "../Classification_Learning_Assets/output/Learning_Assets_classified.dta"
-results_dir: "../Classification_Learning_Assets/output/classification_results"
+input_file: "input/HR_monthly_panel_translated.dta"
+output_file: "output/HR_monthly_panel_classified.dta"
+results_dir: "output/classification_results"
 
-# Text columns to classify - these should be the key columns containing meaningful text
+# Text columns to classify
 text_columns:
-  - shortDescription_value_english
-  - description_value_english
-  - title_value_english
+  - position_name_english
 
 #######################
 # Text Preprocessing
 #######################
 preprocessing:
-  lowercase: true                # Convert all text to lowercase for consistency
-  remove_punctuation: true       # Remove punctuation marks
-  remove_stopwords: true         # Remove common words like "the", "and", etc.
-  lemmatize: true                # Apply lemmatization to reduce words to base form
-  # Custom stopwords - remove domain-specific common words that don't add meaning
-  custom_stopwords: [
-    "learn", "video", "training", "watch", "course", "tutorial",
-    "introduce", "introduction", "overview", "guide", "get", "use",
-    "show", "example", "work", "create", "help", "start", "basic",
-    "skill", "beginner", "intermediate", "advanced", "step", "technique"
-  ]
-  min_word_length: 3             # Minimum word length to keep (filter very short words)
-  max_length: 8000               # Maximum text length to process (characters)
+  lowercase: true
+  remove_punctuation: false      # Keep punctuation for job titles
+  remove_stopwords: false        # Keep all words for context
+  lemmatize: false
+  custom_stopwords: []
+  min_word_length: 1
+  max_length: 10000
 
 #######################
-# Feature Extraction
-#######################
-feature_extraction:
-  method: "embedding"            # Method: "embedding", "tfidf", or "hybrid"
-  
-  # TF-IDF settings (used for either TF-IDF or hybrid method)
-  tfidf:
-    max_features: 5000           # Maximum number of features to extract
-    ngram_range: [1, 3]          # Include unigrams, bigrams, and trigrams
-    min_df: 3                    # Minimum document frequency to include a term
-    max_df: 0.85                 # Maximum document frequency (ignore very common terms)
-  
-  # Embedding settings for deep semantic representation
-  embedding:
-    model: "sentence-transformers"  # Embedding type: "sentence-transformers" or "openai"
-    
-    # Sentence Transformers configuration
-    sentence_transformers:
-      model_name: "paraphrase-multilingual-mpnet-base-v2"  # Powerful multilingual model
-    
-    # OpenAI embeddings configuration (if used)
-    openai:
-      model_name: "text-embedding-3-small"
-      api_key_env: "OPENAI_API_KEY"
-      batch_size: 100
-    
-    # Dimensionality reduction settings
-    dimensionality_reduction:
-      method: "umap"             # Method: "umap", "pca", or "tsne"
-      n_components: 30           # Number of dimensions to reduce to
-      random_state: 42           # For reproducibility
-      # UMAP-specific parameters
-      n_neighbors: 15            # Controls local versus global structure preservation
-      min_dist: 0.1              # Controls compactness of clusters
-      metric: "cosine"           # Distance metric
-
-#######################
-# Clustering Perspectives
+# Classification Perspectives
 #######################
 clustering_perspectives:
-  # Perspective 1: Content categories based on short description and title
-  content_categories:
-    columns:
-      - shortDescription_value_english
-      - title_value_english
-    weight: [0.6, 0.4]           # More weight on short description
-    algorithm: "kmeans"          # Algorithm: "kmeans", "hdbscan", "agglomerative"
-    params:
-      n_clusters: 8              # Number of clusters to form
-      random_state: 42           # For reproducibility
-      max_iter: 500              # Maximum iterations for convergence
-      n_init: 20                 # Number of initializations to try
-    output_column: "content_category_id"
-    evaluate_k_range: [5, 12]    # Automatically evaluate this range of k values
-
-  # Perspective 2: Detailed topics from full descriptions
-  detailed_topics:
-    columns:
-      - description_value_english
-    algorithm: "hdbscan"         # Density-based clustering for natural clusters
-    params:
-      min_cluster_size: 250       # Minimum size of clusters
-      min_samples: 25            # Controls cluster conservativeness
-      metric: "euclidean"        # Distance metric
-      cluster_selection_method: "leaf"  # More compact clusters
-      cluster_selection_epsilon: 0.5
-      max_clusters: 50
-      handle_noise_points: true  # Assign noise points to nearest cluster
-    output_column: "detailed_topic_id"
+  # ChatGPT-powered HR position classification
+  hr_position_classifier:
+    type: "openai_classification"
+    columns: 
+      - position_name_english
+    target_categories:
+      - "Executive & Senior Management"
+      - "Legal, Compliance & Risk"
+      - "Human Resources (HR)"
+      - "Administrative Support"
+      - "Information Technology (IT)"
+      - "Operations & Manufacturing"
+      - "Supply Chain & Logistics"
+      - "Marketing & Communications"
+      - "Sales & Business Development"
+      - "Research & Development (R&D)"
+      - "Finance & Accounting"
+      - "Customer Service & Support"
+      - "Engineering"
+      - "Healthcare & Medical"
+      - "Education & Training"
+      - "Consulting & Advisory"
+      - "Other/Unknown"
+    output_column: "position_category_gpt"
     
-  # Perspective 3: Software or tool focus
-  tool_focus:
-    columns:
-      - shortDescription_value_english
-      - title_value_english
-    weight: [0.3, 0.7]           # More weight on title (often mentions specific tools)
-    algorithm: "kmeans"
-    params:
-      n_clusters: 10             # Increased to capture more distinct tools
-      random_state: 42
-      max_iter: 300
-      n_init: 15
-    output_column: "tool_focus_id"
+    # OpenAI Configuration
+    llm_config:
+      provider: "openai"
+      model: "gpt-3.5-turbo-0125"  # Cost-effective and reliable
+      temperature: 0.1             # Very low for consistency
+      max_tokens: 50               # Allow slightly more tokens
+      timeout: 30
+      max_retries: 3
+      backoff_factor: 2
+      api_key_env: "OPENAI_API_KEY"
+    
+    # Classification settings
+    classification_config:
+      unknown_category: "Other/Unknown"
+      batch_size: 20               # Reasonable batch size
+      include_unknown_in_categories: true
+      prompt_template: |
+        You are an expert HR classifier. Classify this job position title into exactly ONE category from the list below.
+        
+        CATEGORIES:
+        - Executive & Senior Management
+        - Legal, Compliance & Risk
+        - Human Resources (HR)
+        - Administrative Support
+        - Information Technology (IT)
+        - Operations & Manufacturing
+        - Supply Chain & Logistics
+        - Marketing & Communications
+        - Sales & Business Development
+        - Research & Development (R&D)
+        - Finance & Accounting
+        - Customer Service & Support
+        - Engineering
+        - Healthcare & Medical
+        - Education & Training
+        - Consulting & Advisory
+        - Other/Unknown
+        
+        Job Position: "{text}"
+        
+        Instructions:
+        - Respond with ONLY the exact category name
+        - If uncertain or doesn't fit clearly, use "Other/Unknown"
+        - Consider the main function of the role
+        
+        Category:
+    
+    # Validation settings
+    validation:
+      strict_category_matching: true
+      fallback_strategy: "unknown"
 
 #######################
-# Cluster Labeling
+# AI Classification Global Settings
 #######################
-cluster_labeling:
-  method: "openai"               # Method: "openai", "tfidf", or "manual"
+ai_classification:
+  # Cost management
+  cost_management:
+    max_cost_per_run: 100.0       # Increased limit for large dataset
+    track_token_usage: true
+    cost_alerts: true
   
-  # TF-IDF based labeling settings
-  tfidf:
-    top_terms: 10                # Number of terms to include in cluster label
-  
-  # OpenAI API based labeling settings
-  openai:
-    model: "gpt-3.5-turbo-0125"  # Current affordable model with good performance 
-    temperature: 0.2             # Lower temperature for more consistent labels
-    max_tokens: 1500             # Maximum tokens in response
-    api_key_env: "OPENAI_API_KEY"
-    examples_per_cluster: 8      # Number of examples to include in prompt
+  # Intelligent caching to save costs
+  caching:
+    enabled: true
+    cache_duration_days: 90       # Long cache for job titles
+    cache_directory: "ai_cache"
+    
+  # Rate limiting (optimized for GPT-3.5)
+  rate_limiting:
+    requests_per_minute: 100      # Conservative rate
+    batch_delay_seconds: 1.0      # Gentle on API
+    
+  # Monitoring
+  monitoring:
+    log_api_calls: true
+    save_raw_responses: false     # Save space
+    track_classification_accuracy: true
 
 #######################
-# Evaluation settings
+# Evaluation Settings
 #######################
 evaluation:
   metrics:
-    - "silhouette_score"         # Measure of cluster separation
-    - "davies_bouldin_score"     # Measure of cluster compactness
-    - "calinski_harabasz_score"  # Variance ratio criterion
+    - "distribution_analysis"
+    - "cost_analysis"
   visualizations:
-    - "embeddings_plot"          # 2D visualization of embeddings
-    - "silhouette_plot"          # Silhouette coefficient plot
-    - "distribution_plot"        # Cluster size distribution
-    - "term_importance_plot"     # Important terms per cluster
+    - "distribution_plot"
+    - "category_breakdown"
   output_format:
-    - "html"                     # Generate HTML reports
-    - "json"                     # Also save raw data in JSON
-    - "csv"                      # Also save tabular data in CSV
+    - "html"
+    - "csv"
+    - "json"
 
 #######################
-# Cluster Analysis
-#######################
-cluster_analysis:
-  enabled: true                  # Enable detailed cluster analysis
-  top_terms_count: 15            # Number of top terms to extract per cluster
-  examples_count: 5              # Number of representative examples to select
-  create_detailed_reports: true  # Generate comprehensive HTML reports
-  cross_perspective_analysis: true # Analyze relationships between perspectives
-  enhanced_naming: true          # Use enhanced naming with OpenAI
-
-#######################
-# Performance settings
+# Performance Settings
 #######################
 performance:
-  batch_size: 256                # Processing batch size
-  parallel_jobs: -1              # Number of parallel jobs (-1 = all cores)
-  cache_embeddings: true         # Cache embeddings to disk for reuse
-  cache_directory: "../Classification_Learning_Assets/cache"
-  sample_rate: 1.0               # Process full dataset (set <1.0 to sample)
+  batch_size: 256
+  parallel_jobs: -1              # Use available cores
+  cache_embeddings: false        # Not needed for classification
+  cache_directory: "cache"
+  sample_rate: 1.0               # Process all data
 
 #######################
-# Spark configuration
+# Spark Configuration (Minimal - not needed for AI classification)
 #######################
 spark:
-  executor_memory: "24g"         # Memory per executor
-  driver_memory: "24g"           # Driver memory
-  executor_cores: 4              # Cores per executor
-  default_parallelism: 8         # Default parallelism level
+  executor_memory: "8g"
+  driver_memory: "4g"
+  executor_cores: 2
+  default_parallelism: 4
 
 #######################
 # Checkpointing
 #######################
 checkpoint:
-  enabled: true                  # Enable checkpointing
-  interval: 1                    # Checkpoint after each major step
-  directory: "../Classification_Learning_Assets/checkpoints"
-  max_checkpoints: 3             # Number of checkpoints to retain
+  enabled: true
+  interval: 1
+  directory: "checkpoints"
+  max_checkpoints: 3
 
 #######################
-# Logging settings
+# Logging
 #######################
 logging:
-  level: "INFO"                  # Logging level (DEBUG, INFO, WARNING, ERROR)
-  log_file: "../Classification_Learning_Assets/classification_process.log"
-  console_output: true           # Output logs to console
+  level: "INFO"
+  log_file: "logs/hr_classification.log"
+  console_output: true
 
 #######################
 # Miscellaneous options
 #######################
 options:
-  seed: 42                       # Random seed for reproducibility
-  save_intermediate: true        # Save intermediate results
-  intermediate_directory: "../Classification_Learning_Assets/intermediate"
-  clean_intermediate_on_success: false  # Keep intermediate files
+  seed: 42
+  save_intermediate: true
+  clean_intermediate_on_success: false
