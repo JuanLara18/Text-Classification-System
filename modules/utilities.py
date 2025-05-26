@@ -148,33 +148,36 @@ class SparkSessionManager:
         try:
             # Start building the session
             builder = SparkSession.builder.appName(self.app_name)
-            
+
             # Apply configuration settings
             builder = builder.config("spark.driver.memory", 
                                     self.spark_config.get('driver_memory', '4g'))
-            
+
             builder = builder.config("spark.executor.memory", 
                                     self.spark_config.get('executor_memory', '4g'))
-            
+
             builder = builder.config("spark.executor.cores", 
                                     self.spark_config.get('executor_cores', 2))
-            
+
             builder = builder.config("spark.default.parallelism", 
                                     self.spark_config.get('default_parallelism', 4))
-            
+
             # Configuración para NLTK y recursos externos
             nltk_data_dir = os.environ.get("NLTK_DATA", os.path.join(os.getcwd(), "nltk_data"))
-            builder = builder.config("spark.sql.execution.arrow.pyspark.enabled", "true")
+
+            # Fixed Arrow configuration for pandas compatibility
+            builder = builder.config("spark.sql.execution.arrow.pyspark.enabled", "false")  # Changed to false
+            builder = builder.config("spark.sql.execution.arrow.pyspark.fallback.enabled", "true")  # Added fallback
             builder = builder.config("spark.sql.adaptive.enabled", "true")
             builder = builder.config("spark.driver.extraPythonPath", nltk_data_dir)
             builder = builder.config("spark.executor.extraPythonPath", nltk_data_dir)
-            
+
             # Minimize shuffling for text processing workloads
             builder = builder.config("spark.sql.shuffle.partitions", "10")
-            
+
             # Create and cache the session
             self.session = builder.getOrCreate()
-            
+
             return self.session
         
         except Exception as e:
