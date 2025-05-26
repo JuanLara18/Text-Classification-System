@@ -134,6 +134,12 @@ ai_classification:
     track_classification_accuracy: true
 
 #######################
+# Cluster Labeling (for traditional clustering - not used for AI classification)
+#######################
+cluster_labeling:
+  method: "tfidf"  # This won't be used for AI classification but needed for validation
+
+#######################
 # Evaluation Settings
 #######################
 evaluation:
@@ -149,6 +155,16 @@ evaluation:
     - "json"
 
 #######################
+# Feature Extraction (not needed for AI classification but required for validation)
+#######################
+feature_extraction:
+  method: 'embedding'  # Not used for AI classification but required for config validation
+  embedding:
+    model: 'sentence-transformers'
+    sentence_transformers:
+      model_name: 'all-MiniLM-L6-v2'
+
+#######################
 # Performance Settings
 #######################
 performance:
@@ -159,11 +175,11 @@ performance:
   sample_rate: 1.0               # Process all data
 
 #######################
-# Spark Configuration (Minimal - not needed for AI classification)
+# Spark Configuration (Minimal - only needed if traditional clustering is used)
 #######################
 spark:
-  executor_memory: "8g"
-  driver_memory: "4g"
+  executor_memory: "4g"          # Reduced since AI classification doesn't need much memory
+  driver_memory: "2g"            # Reduced 
   executor_cores: 2
   default_parallelism: 4
 
