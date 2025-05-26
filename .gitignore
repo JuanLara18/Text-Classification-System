@@ -57,7 +57,7 @@ intermediate/
 *.dta
 
 # Environment variables and secrets
-.env
+.env*
 .secrets
 *.pem
 *.key
@@ -93,3 +93,6 @@ desktop.ini
 credentials.json
 *_key.txt
 *_config.json
+
+nltk_data/*
+ai_cache/*
