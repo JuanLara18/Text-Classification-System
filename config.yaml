@@ -51,38 +51,62 @@ clustering_perspectives:
       - "Research & Development (R&D)"
       - "Accounting & Finance"
       - "Customer Service & Support"
-      - "Other/Unknown"
+      - "Other"
     output_column: "position_category_gpt"
     
     # OpenAI Configuration - MAXIMUM PERFORMANCE
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"         # Fastest and cheapest
-      temperature: 0.0             # Maximum consistency
-      max_tokens: 15               # REDUCED for speed
-      timeout: 8                   # REDUCED timeout
-      max_retries: 2               # Minimal retries
-      backoff_factor: 1.2          # Fast backoff
+      model: "gpt-4o"         # Fastest and cheapest
+      temperature: 0.1             # Maximum consistency
+      max_tokens: 25               # REDUCED for speed
+      timeout: 12                   # REDUCED timeout
+      max_retries: 3               # Minimal retries
+      backoff_factor: 1.5          # Fast backoff
       api_key_env: "OPENAI_API_KEY"
     
     # Classification settings - OPTIMIZED for UNIQUE VALUE PROCESSING
     classification_config:
-      unknown_category: "Other/Unknown"
+      unknown_category: "Other"
       batch_size: 100              # INCREASED for unique processing
       include_unknown_in_categories: true
       
       # ULTRA-OPTIMIZED prompt for fastest processing
       prompt_template: |
-        Classify job: "{text}"
-        
-        Categories: Executive, Legal, HR, Admin, IT, Operations, Supply Chain, Marketing, Sales, R&D, Finance, Customer Service, Engineering, Healthcare, Education, Consulting, Other
-        
-        Answer:
+        You are an expert HR classifier. Analyze the job position and classify it into ONE of the provided categories.
+
+        POSITION TO CLASSIFY: "{text}"
+
+        AVAILABLE CATEGORIES: {categories}
+
+        DETAILED CATEGORY DESCRIPTIONS:
+        1. Executive & Strategy - C-level executives, directors, strategic roles, general management, VP roles
+        2. Legal, Compliance & Risk - Lawyers, legal counsel, compliance officers, risk managers, auditors, legal affairs  
+        3. Human Resources (HR) - HR specialists, recruiters, training coordinators, HR managers, people operations, talent acquisition
+        4. Administration - Administrative assistants, office managers, secretaries, clerical support, coordination roles
+        5. Information Technology (IT) - Software developers, system administrators, IT support, network engineers, data analysts, programmers
+        6. Operations/Manufacturing - Production workers, operators, supervisors, quality control, maintenance technicians, manufacturing
+        7. Supply Chain - Logistics coordinators, procurement, warehouse staff, inventory managers, supply chain analysts
+        8. Marketing & Communications - Marketing specialists, content creators, PR professionals, brand managers, communications
+        9. Sales - Sales representatives, account managers, business development, customer acquisition roles
+        10. Research & Development (R&D) - Research scientists, product developers, innovation roles, lab technicians, R&D engineers
+        11. Accounting & Finance - Accountants, financial analysts, controllers, bookkeepers, treasury, budgeting roles
+        12. Customer Service & Support - Customer service representatives, technical support, help desk, client relations
+        13. Others - Any position that doesn't clearly fit the above categories
+
+        CLASSIFICATION RULES:
+        - Match the position to the MOST RELEVANT category based on primary job function
+        - Consider job titles, responsibilities, and industry context
+        - If unsure between categories, choose the one that represents the PRIMARY function
+        - Use "Others" only if the position truly doesn't fit any specific category
+        - Focus on the main job function, not secondary duties
+
+        RESPOND WITH ONLY THE EXACT CATEGORY NAME from the list above.
     
     # Validation settings - SPEED OPTIMIZED
     validation:
-      strict_category_matching: false  # Flexible for speed
-      fallback_strategy: "unknown"
+      strict_category_matching: false
+      fallback_strategy: "fuzzy_match"
 
 #######################
 # AI Classification Global Settings - MAXIMUM PERFORMANCE
