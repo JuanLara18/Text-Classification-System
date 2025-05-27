@@ -1,6 +1,6 @@
-# AI Classification System Configuration
-# Optimized for: HR position classification using ChatGPT
-# Target: Classify position_name_english into predefined categories
+# AI Classification System Configuration - OPTIMIZED
+# Hardware: 128GB RAM, 12 CPU cores
+# Target: Fast & cost-effective HR position classification using ChatGPT
 
 #######################
 # File paths and basics
@@ -54,84 +54,99 @@ clustering_perspectives:
       - "Other/Unknown"
     output_column: "position_category_gpt"
     
-    # OpenAI Configuration
+    # OpenAI Configuration - OPTIMIZED
     llm_config:
       provider: "openai"
-      model: "gpt-3.5-turbo-0125"  # Cost-effective and reliable
-      temperature: 0.1             # Very low for consistency
-      max_tokens: 50               # Allow slightly more tokens
-      timeout: 30
-      max_retries: 3
-      backoff_factor: 2
+      model: "gpt-4o-mini"         # FASTER and 60% CHEAPER than gpt-3.5-turbo
+      temperature: 0.0             # Maximum consistency
+      max_tokens: 30               # Reduced for faster processing
+      timeout: 15                  # Reduced timeout
+      max_retries: 2               # Reduced retries
+      backoff_factor: 1.5          # Faster backoff
       api_key_env: "OPENAI_API_KEY"
     
-    # Classification settings
+    # Classification settings - OPTIMIZED for SPEED
     classification_config:
       unknown_category: "Other/Unknown"
-      batch_size: 20               # Reasonable batch size
+      batch_size: 50              # INCREASED: Use more RAM for larger batches
       include_unknown_in_categories: true
+      
+      # OPTIMIZED prompt for faster processing
       prompt_template: |
-        You are an expert HR classifier. Classify this job position title into exactly ONE category from the list below.
+        Classify this job title into ONE category:
         
-        CATEGORIES:
-        - Executive & Senior Management
-        - Legal, Compliance & Risk
-        - Human Resources (HR)
-        - Administrative Support
-        - Information Technology (IT)
-        - Operations & Manufacturing
-        - Supply Chain & Logistics
-        - Marketing & Communications
-        - Sales & Business Development
-        - Research & Development (R&D)
-        - Finance & Accounting
-        - Customer Service & Support
-        - Engineering
-        - Healthcare & Medical
-        - Education & Training
-        - Consulting & Advisory
-        - Other/Unknown
+        Categories: Executive, Legal, HR, Admin, IT, Operations, Supply Chain, Marketing, Sales, R&D, Finance, Customer Service, Engineering, Healthcare, Education, Consulting, Other
         
-        Job Position: "{text}"
+        Job: "{text}"
         
-        Instructions:
-        - Respond with ONLY the exact category name
-        - If uncertain or doesn't fit clearly, use "Other/Unknown"
-        - Consider the main function of the role
-        
-        Category:
+        Response format: [Category name only]
     
     # Validation settings
     validation:
-      strict_category_matching: true
+      strict_category_matching: false  # More flexible for speed
       fallback_strategy: "unknown"
 
 #######################
-# AI Classification Global Settings
+# AI Classification Global Settings - HIGH PERFORMANCE
 #######################
 ai_classification:
-  # Cost management
-  cost_management:
-    max_cost_per_run: 100.0       # Increased limit for large dataset
-    track_token_usage: true
-    cost_alerts: true
-  
-  # Intelligent caching to save costs
+  # PARALLEL PROCESSING - Use your 12 CPUs
+  parallel_processing:
+    enabled: true
+    max_workers: 10               # Use 10 of your 12 CPU cores
+    chunk_size: 1000              # Process 1000 records per worker
+    
+  # AGGRESSIVE RATE LIMITING for parallel processing
+  rate_limiting:
+    requests_per_minute: 1000     # HIGH throughput
+    batch_delay_seconds: 0.05     # MINIMAL delay
+    concurrent_requests: 10       # Multiple simultaneous requests
+    
+  # MAXIMUM CACHING - Use your 128GB RAM
   caching:
     enabled: true
-    cache_duration_days: 90       # Long cache for job titles
+    cache_duration_days: 365      # Long-term cache
     cache_directory: "ai_cache"
+    memory_cache_enabled: true
+    memory_cache_size: 100000     # Cache 200K results in RAM
+    preload_cache: true           # Load cache into RAM on startup
     
-  # Rate limiting (optimized for GPT-3.5)
-  rate_limiting:
-    requests_per_minute: 100      # Conservative rate
-    batch_delay_seconds: 1.0      # Gentle on API
+  # Cost management - OPTIMIZED
+  cost_management:
+    max_cost_per_run: 2000.0      # Higher limit for large dataset
+    track_token_usage: true
+    cost_alerts: true
+    auto_optimize_batches: true   # Automatically adjust batch sizes
     
-  # Monitoring
+  # Enhanced monitoring
   monitoring:
     log_api_calls: true
-    save_raw_responses: false     # Save space
+    save_raw_responses: false     # Save storage space
     track_classification_accuracy: true
+    progress_updates_every: 100   # More frequent progress updates
+    
+  # PERFORMANCE optimizations
+  performance:
+    use_async_processing: true    # Asynchronous API calls
+    connection_pooling: true      # Reuse HTTP connections
+    request_compression: true     # Compress requests
+    response_streaming: true      # Stream responses
+
+#######################
+# Cluster Labeling (required for validation)
+#######################
+cluster_labeling:
+  method: "tfidf"
+
+#######################
+# Feature Extraction (required for validation)
+#######################
+feature_extraction:
+  method: 'embedding'
+  embedding:
+    model: 'sentence-transformers'
+    sentence_transformers:
+      model_name: 'all-MiniLM-L6-v2'
 
 #######################
 # Evaluation Settings
@@ -140,54 +155,75 @@ evaluation:
   metrics:
     - "distribution_analysis"
     - "cost_analysis"
+    - "performance_metrics"
   visualizations:
     - "distribution_plot"
     - "category_breakdown"
+    - "cost_analysis"
   output_format:
     - "html"
     - "csv"
     - "json"
 
 #######################
-# Performance Settings
+# Performance Settings - MAXED OUT
 #######################
 performance:
-  batch_size: 256
-  parallel_jobs: -1              # Use available cores
-  cache_embeddings: false        # Not needed for classification
+  batch_size: 2048               # LARGE batches for your RAM
+  parallel_jobs: 12              # Use all CPU cores
+  cache_embeddings: false        # Not needed for AI classification
   cache_directory: "cache"
   sample_rate: 1.0               # Process all data
+  memory_optimization: true      # Optimize memory usage
+  disk_cache_size: "40GB"        # Large disk cache
 
 #######################
-# Spark Configuration (Minimal - not needed for AI classification)
+# Spark Configuration - OPTIMIZED for your hardware
 #######################
 spark:
-  executor_memory: "8g"
-  driver_memory: "4g"
-  executor_cores: 2
-  default_parallelism: 4
+  executor_memory: "32g"         # Use more of your 128GB RAM
+  driver_memory: "16g"           # Larger driver memory
+  executor_cores: 4              # More cores per executor
+  default_parallelism: 12        # Match your CPU count
+  max_executors: 3               # 3 executors × 32GB = 96GB used
 
 #######################
-# Checkpointing
+# Checkpointing - OPTIMIZED
 #######################
 checkpoint:
   enabled: true
-  interval: 1
+  interval: 1000                 # Checkpoint every 1000 records
   directory: "checkpoints"
-  max_checkpoints: 3
+  max_checkpoints: 5
+  compression: true              # Compress checkpoints to save space
+  async_saving: true             # Save checkpoints asynchronously
 
 #######################
-# Logging
+# Logging - OPTIMIZED
 #######################
 logging:
   level: "INFO"
   log_file: "logs/hr_classification.log"
   console_output: true
+  log_rotation: true             # Rotate large log files
+  max_log_size: "100MB"
+  log_compression: true
 
 #######################
-# Miscellaneous options
+# Miscellaneous options - OPTIMIZED
 #######################
 options:
   seed: 42
-  save_intermediate: true
-  clean_intermediate_on_success: false
+  save_intermediate: false       # Save disk space
+  clean_intermediate_on_success: true  # Clean up after success
+  
+  # TESTING option - uncomment to test with smaller dataset first
+  # sample_rate: 0.001           # Test with 0.1% of data (~1,856 records)
+  
+  # Memory optimization
+  memory_monitoring: true
+  gc_frequency: 1000            # Garbage collection every 1000 operations
+  
+  # Performance monitoring
+  performance_profiling: true
+  detailed_timing: true

@@ -76,14 +76,15 @@ class DataProcessor:
         
     def load_data(self, file_path=None):
         """
-        Loads data from a Stata file, preprocesses text columns in pandas,
-        and then converts to Spark DataFrame.
+        Loads data from a Stata file, preprocesses text columns in pandas.
+        For AI classification, returns pandas DataFrame directly.
+        For traditional clustering, converts to Spark DataFrame.
 
         Args:
             file_path: Optional path to override the default input file.
 
         Returns:
-            Loaded and preprocessed DataFrame (PySpark DataFrame)
+            Loaded and preprocessed DataFrame (pandas or PySpark DataFrame)
         """
         filepath = file_path or self.input_file
         self.logger.info(f"Loading data from {filepath}")
@@ -123,10 +124,38 @@ class DataProcessor:
                 )
                 self.logger.info(f"Completed preprocessing for column: {column}")
             
-            # Obtain Spark session and convert to Spark DataFrame
+            # Check if we have AI classification perspectives
+            perspectives = self.config.get_clustering_perspectives()
+            has_ai_classification = any(
+                p.get('type') == 'openai_classification' 
+                for p in perspectives.values()
+            )
+            
+            # For AI classification, return pandas DataFrame directly
+            if has_ai_classification:
+                self.logger.info("AI classification detected - returning pandas DataFrame")
+                return pd_df
+            
+            # For traditional clustering, convert to Spark DataFrame
             self.logger.info("Converting preprocessed pandas DataFrame to Spark")
             spark = self.spark_manager.get_or_create_session()
-            spark_df = spark.createDataFrame(pd_df)
+            
+            # Handle pandas/PySpark compatibility issue
+            try:
+                spark_df = spark.createDataFrame(pd_df)
+            except AttributeError as e:
+                if "'DataFrame' object has no attribute 'iteritems'" in str(e):
+                    self.logger.warning("PySpark/pandas compatibility issue detected. Using alternative approach.")
+                    # Convert to Arrow format first if available
+                    try:
+                        spark_df = spark.createDataFrame(pd_df.to_records(index=False).tolist(), 
+                                                    schema=list(pd_df.columns))
+                    except:
+                        # Last resort: create with schema inference disabled
+                        spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "false")
+                        spark_df = spark.createDataFrame(pd_df)
+                else:
+                    raise e
             
             # Cache the DataFrame for better performance
             spark_df = spark_df.cache()
@@ -140,7 +169,7 @@ class DataProcessor:
         except Exception as e:
             self.logger.error(f"Error loading data: {str(e)}")
             raise RuntimeError(f"Failed to load data: {str(e)}")
-
+    
     def save_data(self, dataframe, file_path=None):
         """
         Saves data to a Stata file.

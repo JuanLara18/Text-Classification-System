@@ -483,7 +483,9 @@ class ClassificationPipeline:
 
     def load_and_preprocess_data(self):
         """
-        Loads and preprocesses the input data using pandas first, then converts to Spark.
+        Loads and preprocesses the input data.
+        For AI classification, works directly with pandas.
+        For traditional clustering, converts to Spark.
         
         Returns:
             Preprocessed DataFrame or None if failed
@@ -505,13 +507,48 @@ class ClassificationPipeline:
             if not os.path.exists(input_file):
                 self.logger.error(f"Input file not found: {input_file}")
                 return None
-                    
-            # Cargar y preprocesar datos - ahora todo se hace en un único paso en load_data
+            
+            # Check if we have AI classification perspectives
+            perspectives = self.config.get_clustering_perspectives()
+            has_ai_classification = any(
+                p.get('type') == 'openai_classification' 
+                for p in perspectives.values()
+            )
+            
+            # Load and preprocess data
             self.logger.info(f"Loading and preprocessing data from {input_file}")
-            dataframe = self.data_processor.load_data()
-            if dataframe is None:
-                self.logger.error("Failed to load data")
-                return None
+            
+            if has_ai_classification:
+                # For AI classification, work directly with pandas
+                self.logger.info("AI classification detected - processing with pandas")
+                
+                # Load the Stata file into pandas
+                pd_df = pd.read_stata(input_file, convert_categoricals=False)
+                self.logger.info(f"Loaded dataset with {pd_df.shape[0]} rows and {pd_df.shape[1]} columns")
+                
+                # Remove duplicates
+                initial_rows = pd_df.shape[0]
+                pd_df = pd_df.drop_duplicates()
+                if initial_rows > pd_df.shape[0]:
+                    self.logger.info(f"Removed {initial_rows - pd_df.shape[0]} duplicate rows")
+                
+                # Preprocess text columns
+                text_columns = self.config.get_text_columns()
+                for column in text_columns:
+                    if column in pd_df.columns:
+                        self.logger.info(f"Preprocessing column: {column}")
+                        pd_df[f"{column}_preprocessed"] = pd_df[column].apply(
+                            self.data_processor.text_preprocessor.preprocess_text
+                        )
+                
+                dataframe = pd_df
+                
+            else:
+                # For traditional clustering, use the full data processor
+                dataframe = self.data_processor.load_data()
+                if dataframe is None:
+                    self.logger.error("Failed to load data")
+                    return None
             
             # Save checkpoint
             self.checkpoint_manager.save_checkpoint(dataframe, 'preprocessed_data')

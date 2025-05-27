@@ -18,6 +18,10 @@ from collections import defaultdict, Counter
 import openai
 import tiktoken
 
+import concurrent.futures
+import threading
+from queue import Queue
+
 class TokenCounter:
     """Utility class for counting and managing OpenAI tokens."""
     
@@ -321,71 +325,34 @@ Respond with ONLY the category name from the list above. If the text doesn't cle
                 else:
                     self.logger.error(f"API call failed after {self.max_retries} attempts: {e}")
                     return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0, 'error': str(e)}
-    
-    def classify_texts(self, texts: List[str]) -> Tuple[List[str], Dict[str, Any]]:
-        """Classify a list of texts."""
-        self.logger.info(f"Starting classification of {len(texts)} texts using {self.model}")
-        
-        classifications = []
-        metadata = {
-            'total_cost': 0,
-            'total_tokens': 0,
-            'cached_responses': 0,
-            'api_calls': 0,
-            'errors': 0,
-            'start_time': datetime.now().isoformat()
-        }
-        
-        # Process in batches to manage memory and provide progress updates
-        for i in range(0, len(texts), self.batch_size):
-            batch = texts[i:i + self.batch_size]
-            batch_num = i // self.batch_size + 1
-            total_batches = (len(texts) - 1) // self.batch_size + 1
+     
+    def _classify_chunk(self, texts):
+            """Classify a chunk of texts."""
+            classifications = []
+            metadata = {'total_cost': 0, 'api_calls': 0, 'cached_responses': 0, 'errors': 0}
             
-            self.logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} texts)")
-            
-            batch_classifications = []
-            
-            for text in batch:
-                # Skip empty or null texts
+            for text in texts:
                 if not text or pd.isna(text):
-                    batch_classifications.append(self.unknown_category)
+                    classifications.append(self.unknown_category)
                     continue
-                
-                classification, item_metadata = self._classify_single(str(text))
-                batch_classifications.append(classification)
+                    
+                classification, item_meta = self._classify_single(str(text))
+                classifications.append(classification)
                 
                 # Update metadata
-                metadata['total_cost'] += item_metadata.get('cost', 0)
-                metadata['total_tokens'] += item_metadata.get('tokens', 0)
-                if item_metadata.get('cached', False):
+                metadata['total_cost'] += item_meta.get('cost', 0)
+                if item_meta.get('cached', False):
                     metadata['cached_responses'] += 1
-                if item_metadata.get('error'):
-                    metadata['errors'] += 1
-                else:
+                if not item_meta.get('error'):
                     metadata['api_calls'] += 1
+                else:
+                    metadata['errors'] += 1
             
-            classifications.extend(batch_classifications)
-            
-            # Add delay between batches
-            if i + self.batch_size < len(texts):
-                time.sleep(self.batch_delay)
+            return classifications, metadata
         
-        # Save cache
-        if self.cache:
-            self.cache.save()
-        
-        # Final metadata
-        metadata['end_time'] = datetime.now().isoformat()
-        metadata['classification_distribution'] = dict(Counter(classifications))
-        
-        # Log summary
-        self.logger.info(f"Classification completed: {len(classifications)} texts processed")
-        self.logger.info(f"Total cost: ${metadata['total_cost']:.4f}")
-        self.logger.info(f"API calls: {metadata['api_calls']}, Cached: {metadata['cached_responses']}, Errors: {metadata['errors']}")
-        self.logger.info(f"Distribution: {metadata['classification_distribution']}")
-        
-        return classifications, metadata
+    def classify_texts(self, texts):
+        """Use the parallel classification method for better performance."""
+        return self.classify_texts_parallel(texts)    
     
     def get_stats(self) -> Dict[str, Any]:
         """Get classifier statistics."""
@@ -398,6 +365,92 @@ Respond with ONLY the category name from the list above. If the text doesn't cle
             'cache_enabled': self.cache is not None
         }
 
+    def classify_texts_parallel(self, texts: List[str]) -> Tuple[List[str], Dict[str, Any]]:
+        """Classify texts using parallel processing."""
+        self.logger.info(f"Starting parallel classification of {len(texts)} texts")
+        
+        # Get parallel config
+        parallel_config = self.config.get_config_value('ai_classification.parallel_processing', {})
+        max_workers = parallel_config.get('max_workers', 4)
+        
+        classifications = [None] * len(texts)
+        metadata = {
+            'total_cost': 0,
+            'total_tokens': 0,
+            'cached_responses': 0,
+            'api_calls': 0,
+            'errors': 0,
+            'start_time': datetime.now().isoformat()
+        }
+        
+        # Thread-safe counters
+        lock = threading.Lock()
+        
+        def classify_batch(batch_data):
+            batch_idx, batch_texts = batch_data
+            batch_results = []
+            batch_metadata = {'cost': 0, 'tokens': 0, 'cached': 0, 'calls': 0, 'errors': 0}
+            
+            for i, text in enumerate(batch_texts):
+                if not text or pd.isna(text):
+                    batch_results.append(self.unknown_category)
+                    continue
+                    
+                classification, item_meta = self._classify_single(str(text))
+                batch_results.append(classification)
+                
+                # Update batch metadata
+                batch_metadata['cost'] += item_meta.get('cost', 0)
+                batch_metadata['tokens'] += item_meta.get('tokens', 0)
+                if item_meta.get('cached', False):
+                    batch_metadata['cached'] += 1
+                if not item_meta.get('error'):
+                    batch_metadata['calls'] += 1
+                else:
+                    batch_metadata['errors'] += 1
+            
+            return batch_idx, batch_results, batch_metadata
+        
+        # Create batches
+        batches = []
+        for i in range(0, len(texts), self.batch_size):
+            batch = texts[i:i + self.batch_size]
+            batches.append((i, batch))
+        
+        # Process batches in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_batch = {executor.submit(classify_batch, batch): batch for batch in batches}
+            
+            completed = 0
+            for future in concurrent.futures.as_completed(future_to_batch):
+                batch_idx, batch_results, batch_meta = future.result()
+                
+                # Store results
+                for i, result in enumerate(batch_results):
+                    classifications[batch_idx + i] = result
+                
+                # Update metadata thread-safely
+                with lock:
+                    metadata['total_cost'] += batch_meta['cost']
+                    metadata['total_tokens'] += batch_meta['tokens']
+                    metadata['cached_responses'] += batch_meta['cached']
+                    metadata['api_calls'] += batch_meta['calls']
+                    metadata['errors'] += batch_meta['errors']
+                    
+                    completed += 1
+                    if completed % 10 == 0:
+                        self.logger.info(f"Completed {completed}/{len(batches)} batches")
+        
+        # Save cache
+        if self.cache:
+            self.cache.save()
+        
+        metadata['end_time'] = datetime.now().isoformat()
+        metadata['classification_distribution'] = dict(Counter(classifications))
+        
+        self.logger.info(f"Parallel classification completed: ${metadata['total_cost']:.4f}, {metadata['api_calls']} calls")
+        
+        return classifications, metadata
 
 class LLMClassificationManager:
     """Manager for LLM-based classification perspectives."""
