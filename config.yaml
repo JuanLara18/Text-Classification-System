@@ -1,6 +1,10 @@
-# AI Classification System Configuration - OPTIMIZED
-# Hardware: 128GB RAM, 12 CPU cores
-# Target: Fast & cost-effective HR position classification using ChatGPT
+# ULTRA-OPTIMIZED AI Classification Configuration
+# Hardware: 70GB RAM, 11 CPUs
+# PERFORMANCE ENHANCEMENTS:
+# 1. Unique value processing (massive speedup)
+# 2. Optimized batch sizes for high-RAM systems
+# 3. Enhanced parallel processing
+# 4. Aggressive caching strategy
 
 #######################
 # File paths and basics
@@ -14,22 +18,22 @@ text_columns:
   - position_name_english
 
 #######################
-# Text Preprocessing
+# Text Preprocessing - MINIMAL for speed
 #######################
 preprocessing:
   lowercase: true
-  remove_punctuation: false      # Keep punctuation for job titles
-  remove_stopwords: false        # Keep all words for context
-  lemmatize: false
+  remove_punctuation: false      # Keep for context
+  remove_stopwords: false        # Keep all words
+  lemmatize: false               # Skip for speed
   custom_stopwords: []
   min_word_length: 1
-  max_length: 10000
+  max_length: 500                # Reduced for faster processing
 
 #######################
-# Classification Perspectives
+# Classification Perspectives - ULTRA OPTIMIZED
 #######################
 clustering_perspectives:
-  # ChatGPT-powered HR position classification
+  # HIGH-PERFORMANCE HR position classifier
   hr_position_classifier:
     type: "openai_classification"
     columns: 
@@ -54,92 +58,190 @@ clustering_perspectives:
       - "Other/Unknown"
     output_column: "position_category_gpt"
     
-    # OpenAI Configuration - OPTIMIZED
+    # OpenAI Configuration - MAXIMUM PERFORMANCE
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"         # FASTER and 60% CHEAPER than gpt-3.5-turbo
+      model: "gpt-4o-mini"         # Fastest and cheapest
       temperature: 0.0             # Maximum consistency
-      max_tokens: 30               # Reduced for faster processing
-      timeout: 15                  # Reduced timeout
-      max_retries: 2               # Reduced retries
-      backoff_factor: 1.5          # Faster backoff
+      max_tokens: 15               # REDUCED for speed
+      timeout: 8                   # REDUCED timeout
+      max_retries: 2               # Minimal retries
+      backoff_factor: 1.2          # Fast backoff
       api_key_env: "OPENAI_API_KEY"
     
-    # Classification settings - OPTIMIZED for SPEED
+    # Classification settings - OPTIMIZED for UNIQUE VALUE PROCESSING
     classification_config:
       unknown_category: "Other/Unknown"
-      batch_size: 50              # INCREASED: Use more RAM for larger batches
+      batch_size: 100              # INCREASED for unique processing
       include_unknown_in_categories: true
       
-      # OPTIMIZED prompt for faster processing
+      # ULTRA-OPTIMIZED prompt for fastest processing
       prompt_template: |
-        Classify this job title into ONE category:
+        Classify job: "{text}"
         
         Categories: Executive, Legal, HR, Admin, IT, Operations, Supply Chain, Marketing, Sales, R&D, Finance, Customer Service, Engineering, Healthcare, Education, Consulting, Other
         
-        Job: "{text}"
-        
-        Response format: [Category name only]
+        Answer:
     
-    # Validation settings
+    # Validation settings - SPEED OPTIMIZED
     validation:
-      strict_category_matching: false  # More flexible for speed
+      strict_category_matching: false  # Flexible for speed
       fallback_strategy: "unknown"
 
 #######################
-# AI Classification Global Settings - HIGH PERFORMANCE
+# AI Classification Global Settings - MAXIMUM PERFORMANCE
 #######################
 ai_classification:
-  # PARALLEL PROCESSING - Use your 12 CPUs
+  # ENHANCED PARALLEL PROCESSING - Use ALL your CPUs
   parallel_processing:
     enabled: true
-    max_workers: 10               # Use 10 of your 12 CPU cores
-    chunk_size: 1000              # Process 1000 records per worker
+    max_workers: 11               # Use ALL 11 CPU cores
+    chunk_size: 2000              # LARGE chunks for your RAM
     
-  # AGGRESSIVE RATE LIMITING for parallel processing
+  # ULTRA-AGGRESSIVE RATE LIMITING
   rate_limiting:
-    requests_per_minute: 1000     # HIGH throughput
-    batch_delay_seconds: 0.05     # MINIMAL delay
-    concurrent_requests: 10       # Multiple simultaneous requests
+    requests_per_minute: 2000     # MAXIMUM throughput
+    batch_delay_seconds: 0.01     # MINIMAL delay
+    concurrent_requests: 20       # HIGH concurrency
     
-  # MAXIMUM CACHING - Use your 128GB RAM
+  # MAXIMUM CACHING - Leverage your 70GB RAM
   caching:
     enabled: true
-    cache_duration_days: 365      # Long-term cache
+    cache_duration_days: 730      # 2-year cache
     cache_directory: "ai_cache"
     memory_cache_enabled: true
-    memory_cache_size: 100000     # Cache 200K results in RAM
-    preload_cache: true           # Load cache into RAM on startup
+    memory_cache_size: 500000     # Cache 500K results in RAM
+    preload_cache: true           # Load entire cache into RAM
     
-  # Cost management - OPTIMIZED
+    # ENHANCED cache settings
+    compression_enabled: true     # Compress cache files
+    cache_statistics: true        # Track cache performance
+    auto_cleanup: true           # Clean expired entries
+    
+  # Cost management - HIGH LIMITS for large dataset
   cost_management:
-    max_cost_per_run: 2000.0      # Higher limit for large dataset
+    max_cost_per_run: 5000.0      # High limit for full dataset
     track_token_usage: true
     cost_alerts: true
-    auto_optimize_batches: true   # Automatically adjust batch sizes
+    auto_optimize_batches: true
     
-  # Enhanced monitoring
+    # Cost optimization features
+    unique_value_processing: true  # ENABLE unique processing
+    estimate_before_run: true     # Estimate costs first
+    
+  # PERFORMANCE monitoring
   monitoring:
-    log_api_calls: true
-    save_raw_responses: false     # Save storage space
+    log_api_calls: false          # Reduce logging overhead
+    save_raw_responses: false     # Save storage/memory
     track_classification_accuracy: true
-    progress_updates_every: 100   # More frequent progress updates
+    progress_updates_every: 50    # Frequent progress updates
     
-  # PERFORMANCE optimizations
+    # Performance metrics
+    track_unique_ratio: true      # Track unique value efficiency
+    track_cache_performance: true # Monitor cache hit rates
+    memory_usage_monitoring: true # Monitor RAM usage
+    
+  # ULTRA-PERFORMANCE optimizations
   performance:
-    use_async_processing: true    # Asynchronous API calls
-    connection_pooling: true      # Reuse HTTP connections
+    use_async_processing: true    # Async API calls
+    connection_pooling: true      # Reuse connections
     request_compression: true     # Compress requests
     response_streaming: true      # Stream responses
+    
+    # NEW performance features
+    unique_value_optimization: true    # ENABLE unique processing
+    memory_efficient_batching: true    # Optimize batches for RAM
+    adaptive_batch_sizing: true        # Auto-adjust batch sizes
+    pipeline_processing: true          # Pipeline API calls
 
 #######################
-# Cluster Labeling (required for validation)
+# TESTING CONFIGURATION - Use for initial testing
 #######################
-cluster_labeling:
-  method: "tfidf"
+# Uncomment the following section for testing with a small sample first:
+
+# testing:
+#   enabled: true
+#   sample_size: 10000            # Test with 10K records first
+#   sample_method: "random"       # or "first" for first N records
+#   output_file: "output/HR_sample_test.dta"
 
 #######################
-# Feature Extraction (required for validation)
+# Enhanced Spark Configuration - OPTIMIZED for 70GB RAM
+#######################
+spark:
+  executor_memory: "20g"          # Conservative memory allocation
+  driver_memory: "10g"            # Large driver memory  
+  executor_cores: 3               # Balanced cores per executor
+  default_parallelism: 11         # Match CPU count
+  max_executors: 3                # 3 executors × 20GB = 60GB used
+  
+  # Advanced Spark settings
+  executor_memory_fraction: 0.8   # Use 80% of executor memory
+  driver_max_result_size: "4g"    # Large result size
+  sql_adaptive_enabled: true      # Enable adaptive query execution
+  sql_adaptive_coalesce_partitions: true
+
+#######################
+# Enhanced Checkpointing - OPTIMIZED for large datasets
+#######################
+checkpoint:
+  enabled: true
+  interval: 500                   # Checkpoint every 500 unique values
+  directory: "checkpoints"
+  max_checkpoints: 3              # Keep fewer checkpoints
+  compression: true               # Compress for space
+  async_saving: true              # Async checkpoint saving
+  
+  # Advanced checkpoint features
+  incremental_checkpoints: true   # Only save changes
+  memory_checkpoints: true        # Keep checkpoints in RAM
+  checkpoint_validation: true     # Validate checkpoints
+
+#######################
+# Optimized Logging - REDUCED overhead
+#######################
+logging:
+  level: "INFO"
+  log_file: "logs/hr_classification_optimized.log"
+  console_output: true
+  
+  # Reduced logging for performance
+  log_rotation: true
+  max_log_size: "50MB"           # Smaller log files
+  log_compression: true
+  async_logging: true            # Async logging
+  
+  # Performance logging
+  performance_logging: true      # Log performance metrics
+  memory_logging: true          # Log memory usage
+
+#######################
+# MAXIMUM Performance Options
+#######################
+options:
+  seed: 42
+  save_intermediate: false       # Don't save intermediate files
+  clean_intermediate_on_success: true
+  
+  # PERFORMANCE optimization flags
+  memory_monitoring: true
+  gc_frequency: 500             # Garbage collection every 500 ops
+  performance_profiling: true
+  detailed_timing: true
+  
+  # NEW optimization options
+  unique_processing_enabled: true    # ENABLE unique value processing
+  batch_optimization: true          # Optimize batch processing
+  memory_preallocation: true        # Pre-allocate memory
+  cpu_affinity: true               # Set CPU affinity for threads
+  
+  # Resource management
+  max_memory_usage: "60g"          # Maximum memory usage
+  memory_warning_threshold: 0.85   # Warn at 85% memory usage
+  auto_resource_scaling: true      # Auto-scale resources
+
+#######################
+# Feature Extraction - MINIMAL (required for compatibility)
 #######################
 feature_extraction:
   method: 'embedding'
@@ -149,81 +251,23 @@ feature_extraction:
       model_name: 'all-MiniLM-L6-v2'
 
 #######################
-# Evaluation Settings
+# Cluster Labeling - FAST method
+#######################
+cluster_labeling:
+  method: "tfidf"
+
+#######################
+# Evaluation - STREAMLINED
 #######################
 evaluation:
   metrics:
     - "distribution_analysis"
     - "cost_analysis"
     - "performance_metrics"
+    - "unique_value_analysis"      # NEW metric
   visualizations:
     - "distribution_plot"
-    - "category_breakdown"
-    - "cost_analysis"
+    - "performance_plot"           # NEW visualization
   output_format:
     - "html"
-    - "csv"
     - "json"
-
-#######################
-# Performance Settings - MAXED OUT
-#######################
-performance:
-  batch_size: 2048               # LARGE batches for your RAM
-  parallel_jobs: 12              # Use all CPU cores
-  cache_embeddings: false        # Not needed for AI classification
-  cache_directory: "cache"
-  sample_rate: 1.0               # Process all data
-  memory_optimization: true      # Optimize memory usage
-  disk_cache_size: "40GB"        # Large disk cache
-
-#######################
-# Spark Configuration - OPTIMIZED for your hardware
-#######################
-spark:
-  executor_memory: "32g"         # Use more of your 128GB RAM
-  driver_memory: "16g"           # Larger driver memory
-  executor_cores: 4              # More cores per executor
-  default_parallelism: 12        # Match your CPU count
-  max_executors: 3               # 3 executors × 32GB = 96GB used
-
-#######################
-# Checkpointing - OPTIMIZED
-#######################
-checkpoint:
-  enabled: true
-  interval: 1000                 # Checkpoint every 1000 records
-  directory: "checkpoints"
-  max_checkpoints: 5
-  compression: true              # Compress checkpoints to save space
-  async_saving: true             # Save checkpoints asynchronously
-
-#######################
-# Logging - OPTIMIZED
-#######################
-logging:
-  level: "INFO"
-  log_file: "logs/hr_classification.log"
-  console_output: true
-  log_rotation: true             # Rotate large log files
-  max_log_size: "100MB"
-  log_compression: true
-
-#######################
-# Miscellaneous options - OPTIMIZED
-#######################
-options:
-  seed: 42
-  save_intermediate: false       # Save disk space
-  clean_intermediate_on_success: true  # Clean up after success
-  
-  # TESTING option - uncomment to test with smaller dataset first
-  # sample_rate: 0.001           # Test with 0.1% of data (~1,856 records)
-  
-  # Memory optimization
-  memory_monitoring: true
-  gc_frequency: 1000            # Garbage collection every 1000 operations
-  
-  # Performance monitoring
-  performance_profiling: true
-  detailed_timing: true
