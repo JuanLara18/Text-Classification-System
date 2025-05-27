@@ -18,7 +18,7 @@ from collections import defaultdict, Counter
 from pyspark.sql import DataFrame as SparkDataFrame
 import time
 import json
-from .ai_classifier import LLMClassificationManager, OpenAIClassifier
+from .ai_classifier import ClassificationCache, LLMClassificationManager, OpenAIClassifier, TokenCounter
 
 import os
 import time
@@ -2034,6 +2034,178 @@ class ClassifierManager:
             except Exception:
                 self.logger.error("Error getting traceback")
             raise RuntimeError(f"Failed to apply perspective {perspective_name}: {str(e)}")
+
+    # def classify_perspective(self, dataframe, perspective_name, perspective_config):
+    #     """
+    #     Applies a clustering perspective to the data.
+
+    #     Args:
+    #         dataframe: DataFrame with the data (either pandas DataFrame or PySpark DataFrame)
+    #         perspective_name: Name of the perspective
+    #         perspective_config: Configuration for this perspective
+
+    #     Returns:
+    #         Tuple of (DataFrame with added cluster assignments, features, cluster assignments)
+    #     """
+    #     self.logger.info(f"Applying {perspective_name} classification perspective")
+        
+    #     try:
+    #         # Get the columns to use for this perspective
+    #         columns = perspective_config.get('columns', [])
+    #         if not columns:
+    #             raise ValueError(f"No columns specified for perspective {perspective_name}")
+            
+    #         # Get output column name
+    #         output_column = perspective_config.get('output_column', f"{perspective_name}_cluster")
+            
+    #         # Check if columns exist in dataframe
+    #         missing_columns = [col for col in columns if col not in dataframe.columns]
+    #         if missing_columns:
+    #             raise ValueError(f"Columns not found in dataframe: {missing_columns}")
+            
+    #         # Get preprocessed columns
+    #         preprocessed_columns = [f"{col}_preprocessed" if f"{col}_preprocessed" in dataframe.columns else col for col in columns]
+            
+    #         # Extract features for each column
+    #         features_list = []
+    #         weights = perspective_config.get('weight', [1.0] * len(columns))
+            
+    #         # Normalize weights if necessary
+    #         if len(weights) != len(columns):
+    #             self.logger.warning(
+    #                 f"Number of weights ({len(weights)}) doesn't match number of columns ({len(columns)}). "
+    #                 f"Using equal weights."
+    #             )
+    #             weights = [1.0] * len(columns)
+            
+    #         weights = np.array(weights) / sum(weights)
+            
+    #         # Check if we're working with a PySpark DataFrame
+    #         is_spark_df = isinstance(dataframe, SparkDataFrame)
+            
+    #         # Extract or load features for each column
+    #         for i, column in enumerate(columns):
+    #             # Check if features are already extracted for this column
+    #             feature_key = f"{column}_embedding"
+    #             if feature_key in self.features_dict:
+    #                 features = self.features_dict[feature_key]
+    #                 self.logger.info(f"Using existing features for column {column}")
+    #             else:
+    #                 # Extract features
+    #                 self.logger.info(f"Extracting features for column {column}")
+                    
+    #                 # Get texts for feature extraction
+    #                 preprocessed_column = preprocessed_columns[i]
+                    
+    #                 # Handle PySpark DataFrame differently from pandas DataFrame
+    #                 if is_spark_df:
+    #                     # Convert to pandas for feature extraction
+    #                     pandas_df = dataframe.toPandas()
+    #                     texts = pandas_df[preprocessed_column].dropna().tolist()
+    #                 else:
+    #                     # Para pandas DataFrame, procesar directamente
+    #                     texts = dataframe[preprocessed_column].dropna().tolist()
+                    
+    #                 if not texts:
+    #                     self.logger.warning(f"No texts found in column {preprocessed_column}")
+    #                     continue
+                    
+    #                 # Extract features based on configuration
+    #                 features = self.feature_extractor.extract_embeddings(texts)
+    #                 self.features_dict[feature_key] = features
+                
+    #             # Apply weight to this column's features
+    #             weighted_features = features * weights[i]
+    #             features_list.append(weighted_features)
+            
+    #         if not features_list:
+    #             raise ValueError("No features could be extracted for any column")
+            
+    #         # Combine features from all columns (weighted average)
+    #         combined_features = np.zeros(features_list[0].shape)
+    #         for features in features_list:
+    #             combined_features += features
+            
+    #         # Store the combined features
+    #         self.features_dict[f"{perspective_name}_combined"] = combined_features
+            
+    #         # Create and fit the clusterer
+    #         algorithm = perspective_config.get('algorithm', 'kmeans')
+    #         clusterer = self.create_clusterer(algorithm, perspective_config)
+            
+    #         # Fit the clusterer
+    #         clusterer.fit(combined_features)
+            
+    #         # Get cluster assignments
+    #         cluster_assignments = clusterer.get_labels()
+            
+    #         # Store the clusterer and assignments
+    #         self.clusterers[perspective_name] = clusterer
+    #         self.cluster_assignments_dict[perspective_name] = cluster_assignments
+            
+    #         # Si estamos usando PySpark, asegurarnos de trabajar con pandas
+    #         if is_spark_df:
+    #             result_df = dataframe.toPandas()
+    #         else:
+    #             # Para pandas DataFrame, usar una copia
+    #             result_df = dataframe.copy()
+            
+    #         # Añadir asignaciones de clusters
+    #         result_df[output_column] = cluster_assignments
+            
+    #         # Add cluster labels if configured
+    #         if self.config.get_config_value('cluster_analysis.enabled', True):
+    #             # Extract characteristics for enhanced analysis
+    #             cluster_characteristics = []
+    #             for cluster_id in np.unique(cluster_assignments):
+    #                 # Skip noise points (-1) if present
+    #                 if cluster_id == -1:
+    #                     continue
+                    
+    #                 # Get characteristics for this cluster
+    #                 characteristics = self.cluster_labeler.extract_cluster_characteristics(
+    #                     result_df, 
+    #                     columns, 
+    #                     output_column, 
+    #                     cluster_id,
+    #                     vectorizer=None
+    #                 )
+    #                 cluster_characteristics.append(characteristics)
+                
+    #             # Store characteristics for this perspective
+    #             self.logger.info(f"Extracted characteristics for {len(cluster_characteristics)} clusters")
+                
+    #             # Add to DataFrame for tracking
+    #             result_df.attrs['cluster_characteristics'] = cluster_characteristics
+                
+    #             # Use enhanced OpenAI naming if configured
+    #             if (self.config.get_config_value('cluster_analysis.enhanced_naming', True) and 
+    #                 self.config.get_config_value('cluster_labeling.method', 'tfidf') == 'openai'):
+    #                 self.logger.info("Using enhanced OpenAI cluster naming")
+    #                 cluster_labels = self.cluster_labeler.generate_enhanced_openai_labels(
+    #                     cluster_characteristics,
+    #                     perspective_name
+    #                 )
+    #                 # Add labels to result DataFrame
+    #                 label_column = f"{output_column}_label"
+    #                 result_df[label_column] = result_df[output_column].map(cluster_labels)
+    #             else:
+    #                 # Use standard labeling approach
+    #                 result_df = self.add_cluster_labels(result_df, perspective_config)
+    #         else:
+    #             # Use standard labeling approach
+    #             result_df = self.add_cluster_labels(result_df, perspective_config)
+            
+    #         self.logger.info(f"Completed {perspective_name} classification perspective")
+    #         return result_df, combined_features, cluster_assignments
+            
+    #     except Exception as e:
+    #         self.logger.error(f"Error applying perspective {perspective_name}: {str(e)}")
+    #         try:
+    #             self.logger.error(traceback.format_exc())
+    #         except Exception:
+    #             self.logger.error("Error getting traceback")
+    #         raise RuntimeError(f"Failed to apply perspective {perspective_name}: {str(e)}")
     
     def _apply_ai_classification_perspective(self, dataframe, perspective_name, perspective_config):
         """
