@@ -36,71 +36,38 @@ import concurrent.futures
 import threading
 from queue import Queue
 
-class UniqueValueProcessor:
-    """Processor that handles unique value classification and mapping."""
-    
-    def __init__(self, logger):
-        self.logger = logger
-        self.unique_values = None
-        self.value_map = None
-        self.reverse_map = None
-    
-    def prepare_unique_classification(self, texts: List[str]) -> Tuple[List[str], Dict[str, List[int]]]:
-        """
-        Extract unique values and create mapping for efficient classification.
-        
-        Returns:
-            - List of unique texts to classify
-            - Mapping from unique text to original indices
-        """
-        self.logger.info(f"Processing {len(texts)} texts for unique value extraction")
-        
-        # Create mapping of unique values to their indices
-        value_to_indices = defaultdict(list)
-        for i, text in enumerate(texts):
-            # Normalize text for comparison (handle None, NaN, etc.)
-            normalized_text = str(text).strip().lower() if text and pd.notna(text) else ""
-            value_to_indices[normalized_text].append(i)
-        
-        # Get unique values (preserve original case)
-        unique_texts = []
-        self.value_map = {}
-        
-        for normalized_text, indices in value_to_indices.items():
-            if normalized_text:  # Skip empty strings
-                # Use the first occurrence as the canonical form
-                original_text = texts[indices[0]]
-                unique_texts.append(original_text)
-                self.value_map[original_text] = indices
-        
-        # Handle empty/null values
-        if "" in value_to_indices:
-            empty_indices = value_to_indices[""]
-            self.value_map[""] = empty_indices
-        
-        reduction_ratio = len(unique_texts) / len(texts) if texts else 0
-        self.logger.info(f"Reduced {len(texts)} texts to {len(unique_texts)} unique values "
-                        f"({reduction_ratio:.2%} reduction)")
-        
-        return unique_texts, self.value_map
-    
-    def map_results_to_original(self, unique_results: List[str], original_length: int) -> List[str]:
-        """Map classification results from unique values back to original dataset."""
-        if not self.value_map:
-            raise ValueError("Must call prepare_unique_classification first")
-        
-        # Initialize result array
-        results = ["Unknown"] * original_length
-        
-        # Map unique results back to original positions
-        for i, (unique_text, classification) in enumerate(zip(self.value_map.keys(), unique_results)):
-            if unique_text in self.value_map:
-                indices = self.value_map[unique_text]
-                for idx in indices:
-                    results[idx] = classification
-        
-        self.logger.info(f"Mapped {len(unique_results)} unique results to {original_length} original positions")
-        return results
+
+import os
+import numpy as np
+import pandas as pd
+from typing import Dict, List, Union, Optional, Tuple, Any
+import logging
+import pickle
+import traceback 
+from pathlib import Path
+import time
+from sklearn.cluster import KMeans, AgglomerativeClustering
+from sklearn.metrics import silhouette_score
+from sklearn.feature_extraction.text import TfidfVectorizer
+import hdbscan
+import warnings
+import random
+import openai
+from collections import defaultdict, Counter
+from pyspark.sql import DataFrame as SparkDataFrame
+import time
+import json
+
+import scipy.sparse
+
+# Import AI classification components
+from .ai_classifier import (
+    ClassificationCache, 
+    OptimizedLLMClassificationManager, 
+    TokenCounter, 
+    OptimizedOpenAIClassifier,
+    UniqueValueProcessor  # Use the one from ai_classifier
+)
 
 
 class BaseClusterer:
@@ -1642,7 +1609,7 @@ class EnhancedClassifierManager:
                 # Use optimized AI classification
                 return self._apply_optimized_ai_classification_perspective(dataframe, perspective_name, perspective_config)
             elif perspective_type == 'clustering':
-                # Use traditional clustering (existing code)
+                # Use traditional clustering
                 return self._apply_clustering_perspective(dataframe, perspective_name, perspective_config)
             else:
                 raise ValueError(f"Unknown perspective type: {perspective_type}")
@@ -1656,6 +1623,7 @@ class EnhancedClassifierManager:
         self.logger.info(f"Applying OPTIMIZED AI classification perspective: {perspective_name}")
         
         # Check if we're working with a PySpark DataFrame
+        from pyspark.sql import DataFrame as SparkDataFrame
         is_spark_df = isinstance(dataframe, SparkDataFrame)
         
         # Convert to pandas if needed
@@ -1679,11 +1647,103 @@ class EnhancedClassifierManager:
         return result_df, metadata, classifications
     
     def _apply_clustering_perspective(self, dataframe, perspective_name, perspective_config):
-        """Apply traditional clustering perspective (existing code)."""
-        # This would be the existing clustering logic from the original classifier.py
-        # For brevity, I'm not including the full implementation here
-        # but it would be the same as the original _apply_clustering_perspective method
-        pass
+        """Apply traditional clustering perspective."""
+        self.logger.info(f"Applying clustering perspective: {perspective_name}")
+        
+        try:
+            # Get perspective configuration
+            columns = perspective_config.get('columns', [])
+            algorithm = perspective_config.get('algorithm', 'hdbscan').lower()
+            output_column = perspective_config.get('output_column', f"{perspective_name}_cluster")
+            
+            # Check if we're working with a PySpark DataFrame
+            from pyspark.sql import DataFrame as SparkDataFrame
+            is_spark_df = isinstance(dataframe, SparkDataFrame)
+            
+            # Convert to pandas if needed for feature extraction
+            if is_spark_df:
+                pandas_df = dataframe.toPandas()
+            else:
+                pandas_df = dataframe.copy()
+            
+            # Preprocess text columns if needed
+            pandas_df = self.data_processor.preprocess_text_columns(pandas_df, columns)
+            
+            # Extract features for the specified columns
+            _, features_dict = self.data_processor.extract_features(
+                pandas_df, text_columns=columns
+            )
+            
+            # Combine features from all columns for this perspective
+            combined_features = None
+            feature_extraction_method = self.config.get_config_value('feature_extraction.method', 'hybrid')
+            
+            if feature_extraction_method == 'hybrid':
+                # Combine TF-IDF and embedding features
+                all_features = []
+                for column in columns:
+                    if f"{column}_tfidf" in features_dict:
+                        all_features.append(features_dict[f"{column}_tfidf"])
+                    if f"{column}_embedding" in features_dict:
+                        all_features.append(features_dict[f"{column}_embedding"])
+                
+                if all_features:
+                    import scipy.sparse
+                    if any(scipy.sparse.issparse(f) for f in all_features):
+                        # Handle sparse matrices
+                        combined_features = scipy.sparse.hstack(all_features)
+                    else:
+                        # Handle dense matrices
+                        combined_features = np.hstack(all_features)
+            else:
+                # Use features from the first column or combined
+                for column in columns:
+                    if column in features_dict:
+                        combined_features = features_dict[column]
+                        break
+            
+            if combined_features is None:
+                raise ValueError(f"No features could be extracted for perspective {perspective_name}")
+            
+            # Initialize the appropriate clusterer
+            if algorithm == 'kmeans':
+                clusterer = KMeansClusterer(self.config, self.logger, perspective_config)
+            elif algorithm == 'hdbscan':
+                clusterer = HDBSCANClusterer(self.config, self.logger, perspective_config)
+            elif algorithm == 'agglomerative':
+                clusterer = AgglomerativeClusterer(self.config, self.logger, perspective_config)
+            else:
+                raise ValueError(f"Unknown clustering algorithm: {algorithm}")
+            
+            # Fit the clusterer
+            clusterer.fit(combined_features)
+            cluster_assignments = clusterer.get_labels()
+            
+            # Generate cluster labels
+            cluster_labels = self.cluster_labeler.generate_labels(
+                pandas_df, columns, output_column
+            )
+            
+            # Add clustering results to dataframe
+            pandas_df[output_column] = cluster_assignments
+            
+            # Add cluster labels if generated
+            if cluster_labels:
+                label_column = f"{output_column}_label"
+                pandas_df[label_column] = pandas_df[output_column].map(cluster_labels)
+            
+            # Store results
+            self.clusterers[perspective_name] = clusterer
+            self.features_dict[f"{perspective_name}_combined"] = combined_features
+            self.cluster_assignments_dict[perspective_name] = cluster_assignments
+            
+            self.logger.info(f"Clustering perspective {perspective_name} completed successfully")
+            
+            return pandas_df, combined_features, cluster_assignments
+            
+        except Exception as e:
+            self.logger.error(f"Error applying clustering perspective {perspective_name}: {str(e)}")
+            raise RuntimeError(f"Failed to apply clustering perspective {perspective_name}: {str(e)}")
     
     def get_ai_classification_stats(self) -> Dict[str, Any]:
         """Get enhanced statistics for all AI classification perspectives."""
@@ -1692,5 +1752,7 @@ class EnhancedClassifierManager:
     def generate_comprehensive_report(self) -> str:
         """Generate a comprehensive performance report."""
         return self.llm_manager.generate_performance_report()
-    
-    
+
+
+# Agregar esta línea al final para mantener compatibilidad
+ClassifierManager = EnhancedClassifierManager

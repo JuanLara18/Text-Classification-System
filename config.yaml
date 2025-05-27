@@ -100,7 +100,7 @@ ai_classification:
     
   # ULTRA-AGGRESSIVE RATE LIMITING
   rate_limiting:
-    requests_per_minute: 2000     # MAXIMUM throughput
+    requests_per_minute: 1000     # MAXIMUM throughput
     batch_delay_seconds: 0.01     # MINIMAL delay
     concurrent_requests: 20       # HIGH concurrency
     
