@@ -325,28 +325,34 @@ Respond with ONLY the category name from the list above. If the text doesn't cle
                 else:
                     self.logger.error(f"API call failed after {self.max_retries} attempts: {e}")
                     return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0, 'error': str(e)}
-    
-    def classify_texts(self, texts):
-        """Use multiprocessing for faster classification."""
-        import concurrent.futures
-        
-        # Split into chunks for parallel processing
-        chunk_size = max(100, len(texts) // 8)  # 8 workers
-        chunks = [texts[i:i + chunk_size] for i in range(0, len(texts), chunk_size)]
-        
-        all_classifications = []
-        all_metadata = {'total_cost': 0, 'api_calls': 0}
-        
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            futures = [executor.submit(self._classify_chunk, chunk) for chunk in chunks]
+     
+    def _classify_chunk(self, texts):
+            """Classify a chunk of texts."""
+            classifications = []
+            metadata = {'total_cost': 0, 'api_calls': 0, 'cached_responses': 0, 'errors': 0}
             
-            for future in concurrent.futures.as_completed(futures):
-                classifications, metadata = future.result()
-                all_classifications.extend(classifications)
-                all_metadata['total_cost'] += metadata.get('total_cost', 0)
-                all_metadata['api_calls'] += metadata.get('api_calls', 0)
+            for text in texts:
+                if not text or pd.isna(text):
+                    classifications.append(self.unknown_category)
+                    continue
+                    
+                classification, item_meta = self._classify_single(str(text))
+                classifications.append(classification)
+                
+                # Update metadata
+                metadata['total_cost'] += item_meta.get('cost', 0)
+                if item_meta.get('cached', False):
+                    metadata['cached_responses'] += 1
+                if not item_meta.get('error'):
+                    metadata['api_calls'] += 1
+                else:
+                    metadata['errors'] += 1
+            
+            return classifications, metadata
         
-        return all_classifications, all_metadata
+    def classify_texts(self, texts):
+        """Use the parallel classification method for better performance."""
+        return self.classify_texts_parallel(texts)    
     
     def get_stats(self) -> Dict[str, Any]:
         """Get classifier statistics."""

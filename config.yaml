@@ -68,7 +68,7 @@ clustering_perspectives:
     # Classification settings - OPTIMIZED for SPEED
     classification_config:
       unknown_category: "Other/Unknown"
-      batch_size: 100              # INCREASED: Use more RAM for larger batches
+      batch_size: 50              # INCREASED: Use more RAM for larger batches
       include_unknown_in_categories: true
       
       # OPTIMIZED prompt for faster processing
@@ -108,7 +108,7 @@ ai_classification:
     cache_duration_days: 365      # Long-term cache
     cache_directory: "ai_cache"
     memory_cache_enabled: true
-    memory_cache_size: 200000     # Cache 200K results in RAM
+    memory_cache_size: 100000     # Cache 200K results in RAM
     preload_cache: true           # Load cache into RAM on startup
     
   # Cost management - OPTIMIZED
@@ -175,7 +175,7 @@ performance:
   cache_directory: "cache"
   sample_rate: 1.0               # Process all data
   memory_optimization: true      # Optimize memory usage
-  disk_cache_size: "50GB"        # Large disk cache
+  disk_cache_size: "40GB"        # Large disk cache
 
 #######################
 # Spark Configuration - OPTIMIZED for your hardware
