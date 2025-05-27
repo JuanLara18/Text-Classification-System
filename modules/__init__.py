@@ -2,7 +2,7 @@ from .utilities import Logger, SparkSessionManager, FileOperationUtilities, Perf
 from .data_processor import DataProcessor, TextPreprocessor, FeatureExtractor
 from .classifier import ClassifierManager, BaseClusterer, KMeansClusterer, HDBSCANClusterer, AgglomerativeClusterer, ClusterLabeler
 from .evaluation import ClusteringEvaluator, ClusteringVisualizer, EvaluationReporter
-from .ai_classifier import LLMClassificationManager, OpenAIClassifier
+from .ai_classifier import OptimizedLLMClassificationManager, OptimizedOpenAIClassifier
 
 __all__ = [
     'Logger',
@@ -22,6 +22,6 @@ __all__ = [
     'ClusteringEvaluator',
     'ClusteringVisualizer',
     'EvaluationReporter',
-    'LLMClassificationManager',
-    'OpenAIClassifier',
+    'OptimizedLLMClassificationManager',
+    'OptimizedOpenAIClassifier',
 ]
