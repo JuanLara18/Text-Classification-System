@@ -39,22 +39,18 @@ clustering_perspectives:
     columns: 
       - position_name_english
     target_categories:
-      - "Executive & Senior Management"
+      - "Executive & Strategy"
       - "Legal, Compliance & Risk"
       - "Human Resources (HR)"
-      - "Administrative Support"
+      - "Administration"
       - "Information Technology (IT)"
-      - "Operations & Manufacturing"
-      - "Supply Chain & Logistics"
+      - "Operations/Manufacturing"
+      - "Supply Chain"
       - "Marketing & Communications"
-      - "Sales & Business Development"
+      - "Sales"
       - "Research & Development (R&D)"
-      - "Finance & Accounting"
+      - "Accounting & Finance"
       - "Customer Service & Support"
-      - "Engineering"
-      - "Healthcare & Medical"
-      - "Education & Training"
-      - "Consulting & Advisory"
       - "Other/Unknown"
     output_column: "position_category_gpt"
     
