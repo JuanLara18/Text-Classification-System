@@ -1,73 +1,18 @@
 import os
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Union, Optional, Tuple, Any
-import logging
-import pickle
-import traceback 
-from pathlib import Path
-import time
-from sklearn.cluster import KMeans, AgglomerativeClustering
-from sklearn.metrics import silhouette_score
-from sklearn.feature_extraction.text import TfidfVectorizer
-import hdbscan
-import warnings
 import random
-import openai
-from collections import defaultdict, Counter
-from pyspark.sql import DataFrame as SparkDataFrame
 import time
-import json
-from .ai_classifier import ClassificationCache, OptimizedLLMClassificationManager, TokenCounter, OptimizedOpenAIClassifier
+import traceback
+from collections import Counter, defaultdict
+from typing import Any, Dict
 
-import os
-import time
-import json
-import hashlib
-from datetime import datetime, timedelta
-import pickle
-import numpy as np
-import pandas as pd
-from collections import defaultdict, Counter
-import openai
-import tiktoken
-
-import concurrent.futures
-import threading
-from queue import Queue
-
-
-import os
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Union, Optional, Tuple, Any
-import logging
-import pickle
-import traceback 
-from pathlib import Path
-import time
-from sklearn.cluster import KMeans, AgglomerativeClustering
-from sklearn.metrics import silhouette_score
-from sklearn.feature_extraction.text import TfidfVectorizer
 import hdbscan
-import warnings
-import random
-import openai
-from collections import defaultdict, Counter
-from pyspark.sql import DataFrame as SparkDataFrame
-import time
-import json
+import numpy as np
+import pandas as pd
+from sklearn.cluster import AgglomerativeClustering, KMeans
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import silhouette_score
 
-import scipy.sparse
-
-# Import AI classification components
-from .ai_classifier import (
-    ClassificationCache, 
-    OptimizedLLMClassificationManager, 
-    TokenCounter, 
-    OptimizedOpenAIClassifier,
-    UniqueValueProcessor  # Use the one from ai_classifier
-)
+from .ai_classifier import OptimizedLLMClassificationManager
 
 
 class BaseClusterer:
