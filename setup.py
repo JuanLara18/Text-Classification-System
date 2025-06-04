@@ -1,262 +1,226 @@
 #!/usr/bin/env python3
 """
-AI Classification System - Complete Setup Script
-Run this script to automatically set up your AI classification system.
-
-Usage: python setup.py
+Simple Setup Script for AI Text Classification System
+Creates essential directories, config template, and environment file.
 """
 
 import os
 
 def print_banner():
     """Print setup banner."""
-    print("=" * 60)
-    print("🚀 AI Classification System Setup")
-    print("=" * 60)
-    print("Setting up your AI-powered text classification system...")
+    print("=" * 50)
+    print("🤖 AI Text Classification System")
+    print("=" * 50)
+    print("Setting up essential files and directories...")
     print()
 
-def create_directory_structure():
-    """Create the complete directory structure."""
-    print("📁 Creating directory structure...")
+def create_directories():
+    """Create essential directories only."""
+    print("📁 Creating directories...")
     
     directories = [
-        "modules",
-        "tests", 
-        "input",
-        "output",
-        "output/classification_results",
-        "cache",
-        "ai_cache",
-        "checkpoints",
-        "logs",
-        "config_templates",
-        "scripts",
-        "backup"
+        "input",           # For input data files
+        "output",          # For output results
+        "logs",            # For log files
+        "cache",           # For caching data
     ]
     
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
-        print(f"   ✅ Created: {directory}/")
-    
+        print(f"   ✅ {directory}/")
     print()
 
-def create_config_file():
-    """Create the main configuration file optimized for user's specs."""
-    config_content = """# AI Classification System Configuration
-# Optimized for: 128GB RAM, 12 CPU, GPT-3.5 Turbo
-# Target: HR position classification
+def create_config_template():
+    """Create a simple, ready-to-use config template."""
+    print("⚙️ Creating config.yaml template...")
+    
+    config_content = '''# AI Text Classification System Configuration
+# Quick Setup: Just update the file paths and API key below
 
 #######################
-# File paths and basics
+# ESSENTIAL SETTINGS (MUST CHANGE THESE)
 #######################
-input_file: "input/HR_monthly_panel_translated.dta"
-output_file: "output/HR_monthly_panel_classified.dta"
-results_dir: "output/classification_results"
-
-# Text columns to classify
-text_columns:
-  - position_name_english
+input_file: "input/your_data_file.dta"           # ⚠️ UPDATE: Path to your Stata file
+output_file: "output/classified_data.dta"        # ⚠️ UPDATE: Where to save results
+text_columns:                                     # ⚠️ UPDATE: Your text column names
+  - "position_name"                               # Example - change to your column name
+  - "job_description"                             # Example - add/remove as needed
 
 #######################
-# Text Preprocessing
+# AI CLASSIFICATION SETUP
 #######################
+clustering_perspectives:
+  # AI-powered job position classifier (example)
+  position_classifier:
+    type: "openai_classification"
+    columns: 
+      - "position_name"                           # Must match text_columns above
+    target_categories:                            # ⚠️ UPDATE: Your categories
+      - "Management & Executive"
+      - "Engineering & Technical"
+      - "Sales & Marketing" 
+      - "Human Resources"
+      - "Finance & Accounting"
+      - "Operations"
+      - "Customer Service"
+      - "Administration"
+      - "Other"
+    output_column: "job_category"                 # Name of new classification column
+    
+    # OpenAI settings (optimized for cost and speed)
+    llm_config:
+      provider: "openai"
+      model: "gpt-4o-mini"                        # Most cost-effective model
+      temperature: 0.0                            # Consistent results
+      max_tokens: 10                              # Short responses
+      api_key_env: "OPENAI_API_KEY"              # Environment variable name
+    
+    # Classification settings
+    classification_config:
+      batch_size: 50                              # Process 50 at a time
+      unknown_category: "Other"
+      prompt_template: |
+        Classify this job position into one category:
+        Categories: {categories}
+        Position: {text}
+        Respond with only the category name.
+
+#######################
+# SYSTEM SETTINGS (Usually don't need to change)
+#######################
+results_dir: "output"
 preprocessing:
   lowercase: true
   remove_punctuation: true
   remove_stopwords: true
-  lemmatize: false
-  custom_stopwords: []
   min_word_length: 2
-  max_length: 5000
 
-#######################
-# Feature Extraction (for clustering perspectives)
-#######################
-feature_extraction:
-  method: "embedding"
-  embedding:
-    model: "sentence-transformers"
-    sentence_transformers:
-      model_name: "all-MiniLM-L6-v2"
-    dimensionality_reduction:
-      method: "umap"
-      n_components: 30
-      random_state: 42
-
-#######################
-# Classification Perspectives
-#######################
-clustering_perspectives:
-  # AI-powered HR position classification
-  hr_position_classifier:
-    type: "openai_classification"
-    columns: 
-      - position_name_english
-    target_categories:
-      - "Executive & Strategy"
-      - "Legal, Compliance & Risk"
-      - "Human Resources (HR)"
-      - "Administration"
-      - "Information Technology (IT)"
-      - "Operations/Manufacturing"
-      - "Supply Chain"
-      - "Marketing & Communications"
-      - "Sales"
-      - "Research and Development (R&D)"
-      - "Accounting and Finance"
-      - "Customer Service & Support"
-      - "Unknown"
-    output_column: "position_category_ai"
-    
-    # OpenAI Configuration - Optimized for cost and accuracy
-    llm_config:
-      provider: "openai"
-      model: "gpt-3.5-turbo-0125"  # Most cost-effective
-      temperature: 0.0             # Deterministic results
-      max_tokens: 30               # Short responses
-      timeout: 30
-      max_retries: 3
-      api_key_env: "OPENAI_API_KEY"
-    
-    # Classification settings
-    classification_config:
-      unknown_category: "Unknown"
-      batch_size: 25               # Optimized for your system
-      include_unknown_in_categories: true
-      prompt_template: |
-        Classify this job position into exactly one category:
-        
-        Categories:
-        - Executive & Strategy
-        - Legal, Compliance & Risk  
-        - Human Resources (HR)
-        - Administration
-        - Information Technology (IT)
-        - Operations/Manufacturing
-        - Supply Chain
-        - Marketing & Communications
-        - Sales
-        - Research and Development (R&D)
-        - Accounting and Finance
-        - Customer Service & Support
-        - Unknown
-        
-        Position: {text}
-        
-        Respond with ONLY the category name from the list above.
-        Category:
-    
-    # Validation settings
-    validation:
-      strict_category_matching: true
-      fallback_strategy: "unknown"
-
-#######################
-# AI Classification Global Settings
-#######################
-ai_classification:
-  # Cost management
-  cost_management:
-    max_cost_per_run: 50.0        # USD limit
-    track_token_usage: true
-    cost_alerts: true
-  
-  # Intelligent caching
-  caching:
-    enabled: true
-    cache_duration_days: 60       # Long cache for stable results
-    cache_directory: "ai_cache"
-    
-  # Rate limiting (optimized for GPT-3.5)
-  rate_limiting:
-    requests_per_minute: 120      # Higher for GPT-3.5
-    batch_delay_seconds: 0.5
-    
-  # Monitoring
-  monitoring:
-    log_api_calls: true
-    track_classification_accuracy: true
-
-#######################
-# Performance Settings (Optimized for 128GB RAM, 12 CPU)
-#######################
 performance:
-  batch_size: 512                 # Large batches for your RAM
-  parallel_jobs: 12               # Use all CPU cores
+  batch_size: 100
+  parallel_jobs: 4
   cache_embeddings: true
   cache_directory: "cache"
-  sample_rate: 1.0               # Process full dataset
 
-#######################
-# Spark Configuration (Optimized for your hardware)
-#######################
+ai_classification:
+  cost_management:
+    max_cost_per_run: 10.0                       # Stop if cost exceeds $10
+  caching:
+    enabled: true
+    cache_directory: "cache"
+  rate_limiting:
+    requests_per_minute: 100
+
 spark:
-  executor_memory: "32g"          # Use ~25% of your RAM
-  driver_memory: "16g"            # Generous driver memory
-  executor_cores: 4               # 3 executors on 12 cores
-  default_parallelism: 24         # 2x cores for parallel tasks
-  
-#######################
-# Checkpointing
-#######################
-checkpoint:
-  enabled: true
-  interval: 1
-  directory: "checkpoints"
-  max_checkpoints: 5
+  executor_memory: "4g"
+  driver_memory: "4g"
+  executor_cores: 2
 
-#######################
-# Logging
-#######################
 logging:
   level: "INFO"
-  log_file: "logs/classification_process.log"
+  log_file: "logs/classification.log"
   console_output: true
 
-#######################
-# Miscellaneous options
-#######################
 options:
   seed: 42
-  save_intermediate: true
-  clean_intermediate_on_success: false
-"""
+'''
     
     with open("config.yaml", "w") as f:
         f.write(config_content)
     
-    print("✅ Created config.yaml (optimized for your specs)")
+    print("   ✅ config.yaml created")
+    print()
 
 def create_env_template():
-    """Create environment template file."""
-    env_content = """# OpenAI API Configuration
+    """Create environment file template."""
+    print("🔑 Creating .env template...")
+    
+    env_content = '''# OpenAI API Configuration
+# Get your API key from: https://platform.openai.com/api-keys
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Optional: Set custom cache location
-# AI_CACHE_DIR=/path/to/cache
-
-# Optional: Set log level
+# Optional: Uncomment and set if needed
 # LOG_LEVEL=INFO
-"""
+'''
     
     with open(".env.template", "w") as f:
         f.write(env_content)
     
-    with open(".env", "w") as f:
-        f.write(env_content)
-    
-    print("✅ Created .env template (add your OpenAI API key here)")
+    # Create actual .env file if it doesn't exist
+    if not os.path.exists(".env"):
+        with open(".env", "w") as f:
+            f.write(env_content)
+        print("   ✅ .env file created (ADD YOUR API KEY HERE)")
+    else:
+        print("   ✅ .env.template created (.env already exists)")
+    print()
 
+def create_gitignore():
+    """Create essential .gitignore."""
+    print("🚫 Creating .gitignore...")
+    
+    gitignore_content = '''# Environment and secrets
+.env
+*.key
+credentials.*
+
+# Data files
+input/
+output/
+*.dta
+*.csv
+*.xlsx
+
+# Cache and logs
+cache/
+logs/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# System
+.DS_Store
+Thumbs.db
+'''
+    
+    with open(".gitignore", "w") as f:
+        f.write(gitignore_content)
+    
+    print("   ✅ .gitignore created")
+    print()
+
+def print_next_steps():
+    """Print what the user needs to do next."""
+    print("🎯 NEXT STEPS:")
+    print("=" * 50)
+    print("1. Add your OpenAI API key to .env file:")
+    print("   OPENAI_API_KEY=sk-your-actual-key-here")
+    print()
+    print("2. Edit config.yaml and update:")
+    print("   - input_file: path to your .dta file")
+    print("   - text_columns: your column names")
+    print("   - target_categories: your classification categories")
+    print()
+    print("3. Install dependencies:")
+    print("   pip install -r requirements.txt")
+    print()
+    print("4. Run the classification:")
+    print("   python main.py --config config.yaml")
+    print()
+    print("📖 See README.md for detailed instructions")
 
 def main():
     """Main setup function."""
     print_banner()
-    
-    # Core setup steps
-    create_directory_structure()
-    create_config_file()
+    create_directories()
+    create_config_template()
     create_env_template()
+    create_gitignore()
+    print_next_steps()
 
 if __name__ == "__main__":
     main()
