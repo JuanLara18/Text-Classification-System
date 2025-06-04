@@ -170,39 +170,6 @@ class DataProcessor:
             self.logger.error(f"Error loading data: {str(e)}")
             raise RuntimeError(f"Failed to load data: {str(e)}")
     
-    def save_data(self, dataframe, file_path=None):
-        """
-        Saves data to a Stata file.
-
-        Args:
-            dataframe: DataFrame to save (PySpark DataFrame or pandas DataFrame)
-            file_path: Optional path that overrides the configuration
-        """
-        filepath = file_path or self.output_file
-        self.logger.info(f"Saving data to {filepath}")
-        
-        try:
-            # Ensure the directory exists
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            
-            # Convert Spark DataFrame to pandas DataFrame if needed
-            if isinstance(dataframe, SparkDataFrame):
-                self.logger.info("Converting Spark DataFrame to pandas DataFrame")
-                pd_df = dataframe.toPandas()
-            else:
-                # Assume it's already a pandas DataFrame
-                pd_df = dataframe
-            
-            # Save the pandas DataFrame to Stata format
-            self.logger.info(f"Saving pandas DataFrame with {pd_df.shape[0]} rows and {pd_df.shape[1]} columns")
-            pd_df.to_stata(filepath, write_index=False)
-            
-            self.logger.info(f"Successfully saved data to {filepath}")
-            
-        except Exception as e:
-            self.logger.error(f"Error saving data: {str(e)}")
-            raise RuntimeError(f"Failed to save data: {str(e)}")
-    
     def preprocess_text_columns(self, dataframe, text_columns=None):
         """
         Verifica si las columnas de texto ya están preprocesadas en el DataFrame.
@@ -431,56 +398,6 @@ class TextPreprocessor:
                 self.logger.error(f"Error preprocessing text: {str(e)}")
             return ""  # O podrías retornar el texto original: return text
     
-    def preprocess_column(self, dataframe, column_name):
-        """
-        Preprocesses a text column in a DataFrame.
-
-        Args:
-            dataframe: DataFrame containing the column
-            column_name: Name of the column to preprocess
-
-        Returns:
-            DataFrame with the preprocessed column
-        """
-        if column_name not in dataframe.columns:
-            warnings.warn(f"Column '{column_name}' not found in DataFrame")
-            return dataframe
-        
-        if isinstance(dataframe, SparkDataFrame):
-            # For Spark DataFrame, use UDF
-            preprocessor_udf = F.udf(self.preprocess_text, StringType())
-            return dataframe.withColumn(
-                f"{column_name}_preprocessed", 
-                preprocessor_udf(F.col(column_name))
-            )
-        else:
-            # For pandas DataFrame
-            dataframe[f"{column_name}_preprocessed"] = dataframe[column_name].apply(self.preprocess_text)
-            return dataframe
-
-    def safe_log(self, level, message):
-        """
-        Safely logs a message, handling cases where logger might not be present.
-        
-        Args:
-            level: Log level ('info', 'warning', 'error', 'debug')
-            message: Message to log
-        """
-        if not hasattr(self, 'logger'):
-            print(f"[{level.upper()}] {message}")
-            return
-            
-        if level.lower() == 'info':
-            self.logger.info(message)
-        elif level.lower() == 'warning':
-            self.logger.warning(message)
-        elif level.lower() == 'error':
-            self.logger.error(message)
-        elif level.lower() == 'debug':
-            self.logger.debug(message)
-        else:
-            print(f"[{level.upper()}] {message}")
-
 class FeatureExtractor:
     """Feature extractor for texts."""
 
