@@ -21,3 +21,4 @@ nltk
 psutil
 kaleido
 tiktoken
+streamlit
