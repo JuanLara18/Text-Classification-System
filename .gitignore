@@ -1,13 +1,67 @@
+# =============================================================================
+# AI Text Classification System - .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# SENSITIVE DATA & CREDENTIALS
+# -----------------------------------------------------------------------------
+# Environment variables and API keys
+.env
+.env.*
+!.env.template
+*.key
+*.pem
+credentials.*
+*_credentials.*
+*_key.txt
+*_config.json
+secrets/
+api_keys/
+
+# -----------------------------------------------------------------------------
+# DATA FILES (ALL PRIVATE)
+# -----------------------------------------------------------------------------
+# Input data
+input/
+data/
+raw_data/
+source_data/
+
+# Output and results
+output/
+results/
+classified_data/
+processed_data/
+
+# All data formats
+*.dta
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.json
+*.jsonl
+*.parquet
+*.avro
+*.pickle
+*.pkl
+*.feather
+*.h5
+*.hdf5
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# -----------------------------------------------------------------------------
+# PYTHON ENVIRONMENT & PACKAGES
+# -----------------------------------------------------------------------------
 # Python bytecode
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
-*.egg
+*.so
 
 # Virtual environments
 venv/
@@ -15,84 +69,277 @@ env/
 ENV/
 .venv/
 .env/
+.python-version
 
-# IDE files
-.idea/
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# -----------------------------------------------------------------------------
+# CACHE & TEMPORARY FILES
+# -----------------------------------------------------------------------------
+# Application cache
+cache/
+.cache/
+ai_cache/
+classification_cache/
+embedding_cache/
+
+# System cache
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# -----------------------------------------------------------------------------
+# PROCESSING & INTERMEDIATE FILES
+# -----------------------------------------------------------------------------
+# Checkpoints and intermediate processing
+checkpoints/
+intermediate/
+temp_processing/
+*.checkpoint
+
+# NLTK data downloads
+nltk_data/
+
+# Model files and embeddings
+models/
+embeddings/
+*.model
+*.bin
+*.vec
+
+# -----------------------------------------------------------------------------
+# LOGS & MONITORING
+# -----------------------------------------------------------------------------
+# Log files
+*.log
+logs/
+log/
+classification_process.log
+translation_process.log
+
+# Performance monitoring
+performance_reports/
+monitoring/
+
+# -----------------------------------------------------------------------------
+# REPORTS & VISUALIZATIONS
+# -----------------------------------------------------------------------------
+# Generated reports
+reports/
+*.html
+*.pdf
+report_*.json
+*_report.*
+
+# Visualizations and plots
+plots/
+visualizations/
+*.png
+*.jpg
+*.jpeg
+*.svg
+figures/
+
+# Evaluation outputs
+evaluation_results/
+metrics/
+
+# -----------------------------------------------------------------------------
+# DEVELOPMENT & IDE
+# -----------------------------------------------------------------------------
+# VS Code
 .vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Sublime Text
 *.sublime-project
 *.sublime-workspace
-.project
-.pydevproject
-.settings/
 
+# Vim
+*.swp
+*.swo
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# -----------------------------------------------------------------------------
+# TESTING & COVERAGE
+# -----------------------------------------------------------------------------
 # Testing
 .coverage
+.coverage.*
 coverage.xml
 *.cover
+*.py,cover
 htmlcov/
 .tox/
 .nox/
 .pytest_cache/
 nosetests.xml
-coverage.html
+test-results/
+.hypothesis/
 
-# Logs
-*.log
-logs/
-translation_process.log
-
-# Cache files
-.cache/
-cache/
-*.db
-*.sqlite
-*.sqlite3
-
-# Checkpoints and intermediate files
-checkpoints/
-intermediate/
-*.checkpoint
-*.parquet
-*.csv
-*.dta
-
-# Environment variables and secrets
-.env*
-.secrets
-*.pem
-*.key
-
-# Data files
-data/
-input/
-output/
-*.dta
-*.csv
-*.xlsx
-*.xls
-*.parquet
-*.avro
-*.json
-*.jsonl
-
-# Documentation builds
-docs/_build/
-docs/api/
-
+# -----------------------------------------------------------------------------
+# SPARK & BIG DATA
+# -----------------------------------------------------------------------------
 # Spark specific
 derby.log
 metastore_db/
 spark-warehouse/
+.spark/
 
-# OS specific
-.DS_Store
+# Hadoop
+hadoop-logs/
+
+# -----------------------------------------------------------------------------
+# DOCUMENTATION
+# -----------------------------------------------------------------------------
+# Documentation builds
+docs/_build/
+docs/api/
+site/
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# -----------------------------------------------------------------------------
+# OPERATING SYSTEM
+# -----------------------------------------------------------------------------
+# Windows
 Thumbs.db
-desktop.ini
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
 
-# API keys and credentials
-credentials.json
-*_key.txt
-*_config.json
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
 
-nltk_data/*
-ai_cache/*
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# -----------------------------------------------------------------------------
+# PROJECT SPECIFIC
+# -----------------------------------------------------------------------------
+# Configuration backups
+config_backup/
+*.yaml.bak
+*.yml.bak
+
+# Custom directories that might contain sensitive data
+custom_data/
+user_data/
+client_data/
+proprietary/
+
+# Large files that shouldn't be versioned
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Compiled translations
+*.mo
+
+# -----------------------------------------------------------------------------
+# DEPENDENCIES & PACKAGE MANAGERS
+# -----------------------------------------------------------------------------
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# conda
+.conda/
+conda-meta/
+
+# -----------------------------------------------------------------------------
+# CLOUD & DEPLOYMENT
+# -----------------------------------------------------------------------------
+# Docker
+.dockerignore
+Dockerfile.*
+docker-compose.override.yml
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# AWS
+.aws/
+
+# -----------------------------------------------------------------------------
+# SECURITY SCANNERS
+# -----------------------------------------------------------------------------
+# Security scan results
+.bandit
+.safety
+security_report.*
