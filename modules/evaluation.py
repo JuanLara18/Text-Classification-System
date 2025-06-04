@@ -4,21 +4,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score, silhouette_samples
-from sklearn.manifold import TSNE
 import umap
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import json
-import csv
-from pathlib import Path
-import time
 from datetime import datetime
-import warnings
-from collections import Counter, defaultdict
-from typing import List, Dict, Tuple, Any, Optional
-import logging
-import seaborn as sns
+from collections import Counter
+from typing import List, Dict, Any
 
 
 class ClassificationEvaluator:
@@ -2651,8 +2644,6 @@ class EvaluationReporter:
             # Add overall interpretation based on metrics
             silhouette = metrics.get('silhouette_score')
             davies_bouldin = metrics.get('davies_bouldin_score')
-            calinski = metrics.get('calinski_harabasz_score')
-            num_clusters = metrics.get('num_clusters')
             
             # Overall quality assessment
             quality = "undetermined"
@@ -3835,7 +3826,6 @@ class ClusterAnalyzer:
                 }
             
             # Extract counts
-            cluster_ids = list(counter.keys())
             counts = list(counter.values())
             
             # Calculate statistics
@@ -3911,7 +3901,7 @@ class ClusterAnalyzer:
             total_clusters = len(characteristics)
             
             summary.extend([
-                f"## Overview",
+                "## Overview",
                 f"- **Total clusters:** {total_clusters}",
                 f"- **Total records:** {total_size}",
                 ""
@@ -3923,7 +3913,7 @@ class ClusterAnalyzer:
             # Add information about largest clusters
             top_n = min(5, len(sorted_clusters))
             summary.extend([
-                f"## Largest Clusters",
+                "## Largest Clusters",
                 "| Cluster ID | Size | % of Total | Top Terms |",
                 "|------------|------|------------|-----------|"
             ])
@@ -3945,7 +3935,7 @@ class ClusterAnalyzer:
                 most_distinct = distinct_clusters[0]
                 
                 summary.extend([
-                    f"## Cluster Distinctiveness",
+                    "## Cluster Distinctiveness",
                     f"- **Most distinct cluster:** Cluster {most_distinct['id']} (score: {most_distinct['distinctiveness']:.4f})",
                     f"  - Top terms: {', '.join([term for term, _ in most_distinct['top_terms'][:5]])}",
                     f"- **Least distinct cluster:** Cluster {least_distinct['id']} (score: {least_distinct['distinctiveness']:.4f})",

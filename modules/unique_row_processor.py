@@ -8,7 +8,6 @@ class UniqueRowProcessor:
 
     def prepare_unique_rows(self, dataframe, columns):
         """Return DataFrame with unique rows and mapping to originals."""
-        import pandas as pd
         from collections import defaultdict
 
         if not columns:
