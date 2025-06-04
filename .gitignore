@@ -33,6 +33,17 @@ results/
 classified_data/
 processed_data/
 
+# Test and validation data
+test/tests/*
+test/cache/*
+test/checkpoint/*
+test/data/*
+test/results/*
+test/coverage_html/*
+test/logs/*
+test/.gitignore
+
+
 # All data formats
 *.dta
 *.csv
