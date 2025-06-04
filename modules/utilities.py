@@ -198,23 +198,6 @@ class SparkSessionManager:
 class FileOperationUtilities:
     """Utilities for file operations."""
     
-    @staticmethod
-    def validate_file_path(file_path):
-        """
-        Validates that a file path exists.
-        
-        Args:
-            file_path: Path to validate
-            
-        Returns:
-            bool: True if the file exists
-            
-        Raises:
-            ValueError: If the file does not exist
-        """
-        if not file_path or not os.path.isfile(file_path):
-            raise ValueError(f"File does not exist or is not a valid file: {file_path}")
-        return True
     
     @staticmethod
     def create_directory_if_not_exists(directory_path):

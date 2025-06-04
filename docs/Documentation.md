@@ -61,14 +61,11 @@ Handles data loading, preprocessing, and feature extraction.
 #### Classes
 - `DataProcessor`: Main class for loading and processing data
   - `load_data()`: Loads Stata files into PySpark DataFrames
-  - `save_data()`: Saves results back to Stata format
   - `preprocess_text_columns()`: Applies text preprocessing
   - `extract_features()`: Extracts numerical features from text
 
 - `TextPreprocessor`: Handles text cleaning and normalization
   - `preprocess_text()`: Applies preprocessing to a text string
-  - `preprocess_column()`: Processes a DataFrame column
-
 - `FeatureExtractor`: Converts text to numerical features
   - `extract_tfidf_features()`: Creates TF-IDF representations
   - `extract_embeddings()`: Creates embeddings using models
