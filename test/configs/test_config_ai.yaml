@@ -1,0 +1,356 @@
+# tests/configs/test_config_ai.yaml
+# AI Classification Test Configuration
+
+input_file: "tests/data/test_job_dataset.dta"
+output_file: "tests/output/test_ai_classified.dta"
+results_dir: "tests/results/ai_classification"
+text_columns:
+  - "position_title"
+  - "job_description"
+
+clustering_perspectives:
+  job_category_classifier:
+    type: "openai_classification"
+    columns: 
+      - "position_title"
+    target_categories:
+      - "Software Engineering"
+      - "Data Science & Analytics"
+      - "Product Management"
+      - "Sales & Marketing"
+      - "Human Resources"
+      - "Finance & Accounting"
+      - "Operations & Administration"
+      - "Customer Service"
+      - "Other"
+    output_column: "predicted_category"
+    
+    llm_config:
+      provider: "openai"
+      model: "gpt-4o-mini"
+      temperature: 0.0
+      max_tokens: 20
+      timeout: 10
+      max_retries: 2
+      api_key_env: "OPENAI_API_KEY"
+    
+    classification_config:
+      batch_size: 25
+      unknown_category: "Other"
+      include_unknown_in_categories: true
+      prompt_template: |
+        Classify this job position into ONE category:
+        
+        Categories: {categories}
+        Job Position: "{text}"
+        
+        Answer with the category name only.
+
+  experience_level_classifier:
+    type: "openai_classification"
+    columns:
+      - "job_description"
+    target_categories:
+      - "Entry Level"
+      - "Mid Level"
+      - "Senior Level"
+      - "Executive"
+      - "Unknown"
+    output_column: "predicted_experience"
+    
+    llm_config:
+      provider: "openai"
+      model: "gpt-4o-mini"
+      temperature: 0.0
+      max_tokens: 15
+      api_key_env: "OPENAI_API_KEY"
+    
+    classification_config:
+      batch_size: 30
+      unknown_category: "Unknown"
+      prompt_template: |
+        What experience level is required for this job?
+        
+        Levels: {categories}
+        Job Description: "{text}"
+        
+        Answer with the level only.
+
+preprocessing:
+  lowercase: true
+  remove_punctuation: true
+  remove_stopwords: true
+  lemmatize: false
+  min_word_length: 2
+  max_length: 5000
+
+ai_classification:
+  cost_management:
+    max_cost_per_run: 5.0
+  caching:
+    enabled: true
+    cache_directory: "tests/cache"
+    cache_duration_days: 30
+    preload_cache: true
+  rate_limiting:
+    requests_per_minute: 200
+    concurrent_requests: 8
+    batch_delay_seconds: 0.1
+  parallel_processing:
+    max_workers: 4
+
+performance:
+  batch_size: 50
+  parallel_jobs: 2
+  cache_embeddings: true
+  cache_directory: "tests/cache"
+
+spark:
+  executor_memory: "2g"
+  driver_memory: "2g"
+  executor_cores: 1
+  default_parallelism: 2
+
+checkpoint:
+  enabled: true
+  directory: "tests/checkpoints"
+  max_checkpoints: 3
+  interval: 1
+
+logging:
+  level: "INFO"
+  console_output: true
+  log_file: "tests/logs/test_ai_classification.log"
+
+options:
+  seed: 42
+  save_intermediate: false
+  clean_intermediate_on_success: true
+
+evaluation:
+  metrics: ['accuracy', 'distribution']
+  visualizations: ['distribution_plot']
+  output_format: ['html', 'json']
+
+---
+# tests/configs/test_config_clustering.yaml
+# Traditional Clustering Test Configuration
+
+input_file: "tests/data/test_job_dataset.dta"
+output_file: "tests/output/test_clustered.dta"
+results_dir: "tests/results/clustering"
+text_columns:
+  - "position_title"
+  - "job_description"
+  - "skills_required"
+
+clustering_perspectives:
+  job_content_clusters:
+    type: "clustering"
+    algorithm: "hdbscan"
+    columns:
+      - "position_title"
+      - "job_description"
+    output_column: "content_cluster"
+    params:
+      min_cluster_size: 15
+      min_samples: 5
+      metric: "euclidean"
+      cluster_selection_epsilon: 0.3
+      max_clusters: 20
+      handle_noise_points: true
+
+  skills_clusters:
+    type: "clustering"
+    algorithm: "kmeans"
+    columns:
+      - "skills_required"
+    output_column: "skills_cluster"
+    params:
+      n_clusters: 8
+      random_state: 42
+      n_init: 5
+      max_iter: 200
+    evaluate_k_range: [3, 12]
+
+  experience_clusters:
+    type: "clustering"
+    algorithm: "agglomerative"
+    columns:
+      - "job_description"
+    output_column: "experience_cluster"
+    params:
+      n_clusters: 6
+      linkage: "ward"
+      affinity: "euclidean"
+
+preprocessing:
+  lowercase: true
+  remove_punctuation: true
+  remove_stopwords: true
+  lemmatize: true
+  custom_stopwords: ["job", "position", "work", "company", "team"]
+  min_word_length: 3
+  max_length: 8000
+
+feature_extraction:
+  method: "hybrid"
+  tfidf:
+    max_features: 2000
+    ngram_range: [1, 2]
+    min_df: 3
+  embedding:
+    model: "sentence-transformers"
+    sentence_transformers:
+      model_name: "all-MiniLM-L6-v2"
+    dimensionality_reduction:
+      method: "umap"
+      n_components: 30
+      random_state: 42
+
+cluster_labeling:
+  method: "tfidf"
+  tfidf:
+    top_terms: 3
+  openai:
+    model: "gpt-3.5-turbo"
+    temperature: 0.3
+    max_tokens: 30
+    examples_per_cluster: 5
+    api_key_env: "OPENAI_API_KEY"
+    prompt_template: "Based on these job examples, provide a short label for this cluster (max 4 words): {examples}"
+
+cluster_analysis:
+  enabled: true
+  top_terms_count: 10
+  examples_count: 3
+  create_detailed_reports: true
+  cross_perspective_analysis: true
+  enhanced_naming: false
+
+performance:
+  batch_size: 100
+  parallel_jobs: 2
+  cache_embeddings: true
+  cache_directory: "tests/cache"
+
+spark:
+  executor_memory: "2g"
+  driver_memory: "2g"
+  executor_cores: 1
+  default_parallelism: 2
+
+checkpoint:
+  enabled: true
+  directory: "tests/checkpoints"
+  max_checkpoints: 3
+
+logging:
+  level: "DEBUG"
+  console_output: true
+  log_file: "tests/logs/test_clustering.log"
+
+evaluation:
+  metrics: ['silhouette_score', 'davies_bouldin_score', 'calinski_harabasz_score']
+  visualizations: ['embeddings_plot', 'silhouette_plot', 'distribution_plot']
+  output_format: ['html', 'json', 'csv']
+
+options:
+  seed: 42
+
+---
+# tests/configs/test_config_hybrid.yaml  
+# Hybrid Test Configuration (AI + Clustering)
+
+input_file: "tests/data/test_job_dataset.dta"
+output_file: "tests/output/test_hybrid.dta"
+results_dir: "tests/results/hybrid"
+text_columns:
+  - "position_title"
+  - "job_description"
+  - "skills_required"
+
+clustering_perspectives:
+  # AI Classification
+  category_classifier:
+    type: "openai_classification"
+    columns: 
+      - "position_title"
+    target_categories:
+      - "Software Engineering"
+      - "Data Science & Analytics"
+      - "Product Management"
+      - "Sales & Marketing"
+      - "Human Resources"
+      - "Finance & Accounting"
+      - "Operations & Administration"
+      - "Customer Service"
+    output_column: "ai_category"
+    llm_config:
+      model: "gpt-4o-mini"
+      temperature: 0.0
+      api_key_env: "OPENAI_API_KEY"
+    classification_config:
+      batch_size: 20
+
+  # Traditional Clustering
+  content_discovery:
+    type: "clustering"
+    algorithm: "hdbscan"
+    columns:
+      - "job_description"
+      - "skills_required"
+    output_column: "discovered_cluster"
+    params:
+      min_cluster_size: 20
+      min_samples: 8
+      max_clusters: 15
+
+  skills_grouping:
+    type: "clustering" 
+    algorithm: "kmeans"
+    columns:
+      - "skills_required"
+    output_column: "skills_group"
+    params:
+      n_clusters: 6
+
+preprocessing:
+  lowercase: true
+  remove_punctuation: true
+  remove_stopwords: true
+  min_word_length: 2
+
+feature_extraction:
+  method: "embedding"
+  embedding:
+    model: "sentence-transformers"
+    sentence_transformers:
+      model_name: "all-MiniLM-L6-v2"
+
+ai_classification:
+  cost_management:
+    max_cost_per_run: 3.0
+  caching:
+    enabled: true
+    cache_directory: "tests/cache"
+
+cluster_analysis:
+  enabled: true
+  cross_perspective_analysis: true
+
+performance:
+  batch_size: 75
+  parallel_jobs: 2
+
+spark:
+  executor_memory: "2g"
+  driver_memory: "2g"
+
+logging:
+  level: "INFO"
+  console_output: true
+  log_file: "tests/logs/test_hybrid.log"
+
+options:
+  seed: 42
