@@ -1,50 +1,77 @@
 # AI Text Classification System
 
-🤖 **Automatically classify text data using AI-powered categorization**
+![Repo Size](https://img.shields.io/github/repo-size/JuanLara18/Text-Classification-System)
+![License](https://img.shields.io/github/license/JuanLara18/Text-Classification-System)
+![Last Commit](https://img.shields.io/github/last-commit/JuanLara18/Text-Classification-System)
 
-This tool takes your data files (like Excel or Stata files) with text columns and automatically adds new classification columns using OpenAI's GPT models. Perfect for categorizing job positions, products, customer feedback, or any text data.
+Easily label large text files using AI and classic clustering methods. The
+system relies on OpenAI models along with scikit-learn, HDBSCAN and PySpark to
+process your data, add new category columns and create detailed reports.
 
-## Quick Start (5 minutes)
+## Quick Start
 
-### 1. Setup
+### 0. Clone this repository
 ```bash
-# Clone and setup
 git clone https://github.com/JuanLara18/Text-Classification-System.git
-cd text-classification-system
-python setup.py
+cd Text-Classification-System
+```
 
-# Install dependencies
+### 1. Create and activate a virtual environment
+```bash
+python3 -m venv venv
+source venv/bin/activate    # On Windows use: venv\Scripts\activate
+```
+
+### 2. Run the setup script
+```bash
+python setup.py
+```
+This command creates the basic folders, a sample `config.yaml` and an `.env`
+file.
+
+### 3. Install dependencies
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Get OpenAI API Key
-1. Go to [OpenAI API Keys](https://platform.openai.com/api-keys)
-2. Create a new API key
-3. Add it to your `.env` file:
+### 4. Add your OpenAI key
+Edit `.env` and set:
 ```bash
-OPENAI_API_KEY=sk-your-actual-key-here
+OPENAI_API_KEY=sk-your-key-here
 ```
 
-### 3. Configure Your Data
-Edit `config.yaml`:
-```yaml
-# Update these 3 things:
-input_file: "input/your_data.dta"           # Path to your data file
-text_columns: ["job_title", "description"]  # Your text column names
-target_categories:                          # Your classification categories
-  - "Engineering"
-  - "Sales" 
-  - "Marketing"
-  - "HR"
-  # Add your categories here
-```
+### 5. Configure the classification
+Open `config.yaml` to tell the system how it should label your text.  A
+**perspective** is a set of rules for one classification task.  You can define
+several perspectives in the file and run them all at once.
 
-### 4. Run Classification
+**AI classification with ChatGPT**
+- Set `type: "openai_classification"`.
+- List the `columns` you want to classify and the `target_categories` you expect
+  (e.g. job titles, product types, etc.).
+- Optionally tweak the `classification_config` section to change the prompt or
+  batch size.
+
+**Traditional clustering**
+- Set `type: "clustering"` and choose an `algorithm` such as `hdbscan` or
+  `kmeans`.
+- Provide algorithm parameters under `params` if needed.
+- Use this when you do not have predefined categories and want to discover
+  groups automatically.
+
+**Hybrid approach**
+- Mix both AI and clustering perspectives in the same file.
+- Useful for comparing the results and refining your categories.
+
+Remember to update `input_file`, `output_file`, `text_columns` and any category
+lists or algorithm settings relevant to your use case.
+
+### 6. Run the classifier
 ```bash
 python main.py --config config.yaml
 ```
 
-**That's it!** Your classified data will be in the `output/` folder.
+Your classified data will be saved in the `output/` folder.
 
 ---
 
