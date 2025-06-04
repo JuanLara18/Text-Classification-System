@@ -4,8 +4,7 @@ import re
 import numpy as np
 import pandas as pd
 import pickle
-from typing import List, Dict, Union, Optional, Tuple, Any
-from pathlib import Path
+
 import time
 import hashlib
 import logging
@@ -16,21 +15,12 @@ import openai
 import umap
 import warnings
 import string
-from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import nltk
 from pyspark.sql import DataFrame as SparkDataFrame
 from pyspark.sql import functions as F
-from pyspark.sql.types import (
-    StructType,
-    StructField,
-    StringType, 
-    IntegerType,
-    FloatType,
-    ArrayType,
-    BooleanType
-)
+from pyspark.sql.types import StringType
 
 # Define an explicit location for NLTK data
 nltk_data_path = os.path.join(os.getcwd(), "nltk_data")

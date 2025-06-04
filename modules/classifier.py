@@ -11,28 +11,17 @@ import pandas as pd
 from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-import warnings
-import random
 import openai
-from collections import defaultdict, Counter
 from pyspark.sql import DataFrame as SparkDataFrame
-import time
 import json
 
 import scipy.sparse
 # Import AI classification components
-from .ai_classifier import (
-    ClassificationCache,
-    OptimizedLLMClassificationManager,
-    TokenCounter,
-    OptimizedOpenAIClassifier,
-    UniqueValueProcessor  # Use the one from ai_classifier
-)
+from .ai_classifier import OptimizedLLMClassificationManager
 from .unique_row_processor import UniqueRowProcessor
 
 from sklearn.metrics import silhouette_score
 
-from .ai_classifier import OptimizedLLMClassificationManager
 
 
 class BaseClusterer:
@@ -407,7 +396,6 @@ class HDBSCANClusterer(BaseClusterer):
             n_clusters = len(unique_clusters)
 
             # If too many clusters, try increasing min_cluster_size and refit
-            original_min_cluster_size = self.min_cluster_size
             refits = 0
             max_refits = 3
 
@@ -544,8 +532,8 @@ class HDBSCANClusterer(BaseClusterer):
         # If more than 50% are noise, something is wrong with parameters
         if noise_count > len(labels) * 0.5:
             self.logger.warning(
-                f"More than 50% of points classified as noise. "
-                f"Consider adjusting min_cluster_size or min_samples."
+                "More than 50% of points classified as noise. "
+                "Consider adjusting min_cluster_size or min_samples."
             )
         
         # For now, we'll create a separate cluster for noise points
@@ -770,12 +758,11 @@ class ClusterLabeler:
                 self.method = 'tfidf'
             else:
                 # Configure API key without validation
-                import openai
                 openai.api_key = api_key
 
                 # Attempt a basic validation call
                 try:
-                    response = openai.models.list(limit=1)
+                    openai.models.list(limit=1)
                     self.logger.info("Successfully validated OpenAI API key")
                 except Exception as e:
                     self.logger.warning(
@@ -1168,7 +1155,7 @@ class ClusterLabeler:
             f"# Cluster Naming Task: {perspective_name}",
             f"\nYou are an expert in data analysis tasked with creating descriptive, meaningful names for {len(characteristics)} clusters of {domain_context}.",
             "\n## Objective",
-            f"Create precise, descriptive names for each cluster that clearly communicate the distinct theme or pattern represented by that cluster.",
+            "Create precise, descriptive names for each cluster that clearly communicate the distinct theme or pattern represented by that cluster.",
             
             "\n## Guidelines:",
             "- Generate concise (3-5 words) yet descriptive names that capture the core concept of each cluster",
@@ -1439,7 +1426,6 @@ class ClusterLabeler:
                 self.logger.warning(f"Failed to save prompt: {str(e)}")
             
             # Call OpenAI API
-            import openai
             openai.api_key = api_key
             
             response = openai.chat.completions.create(
@@ -1470,7 +1456,6 @@ class ClusterLabeler:
             labels = {}
             try:
                 # First try JSON parsing
-                import json
                 
                 # Find JSON in the response
                 start_idx = response_text.find('{')
@@ -1591,7 +1576,6 @@ class EnhancedClassifierManager:
         self.logger.info(f"Applying OPTIMIZED AI classification perspective: {perspective_name}")
         
         # Check if we're working with a PySpark DataFrame
-        from pyspark.sql import DataFrame as SparkDataFrame
         is_spark_df = isinstance(dataframe, SparkDataFrame)
         
         # Convert to pandas if needed
@@ -1626,7 +1610,6 @@ class EnhancedClassifierManager:
             start_time = time.time()
 
             # Check if we're working with a PySpark DataFrame
-            from pyspark.sql import DataFrame as SparkDataFrame
             is_spark_df = isinstance(dataframe, SparkDataFrame)
 
             # Convert to pandas if needed for feature extraction
@@ -1667,7 +1650,6 @@ class EnhancedClassifierManager:
                         all_features.append(features_dict[f"{column}_embedding"])
                 
                 if all_features:
-                    import scipy.sparse
                     if any(scipy.sparse.issparse(f) for f in all_features):
                         # Handle sparse matrices
                         combined_features = scipy.sparse.hstack(all_features)
@@ -1718,7 +1700,6 @@ class EnhancedClassifierManager:
                 pandas_df[label_column] = [cluster_labels.get(cl) for cl in full_assignments]
             
             # Replicate feature matrix back to full dataset for evaluation
-            import scipy.sparse
             if scipy.sparse.issparse(combined_features):
                 rows = [None] * len(pandas_df)
                 for u_idx, idx_list in row_map.items():

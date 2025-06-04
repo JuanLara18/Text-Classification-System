@@ -6,13 +6,11 @@ Integrates seamlessly with the existing Text Classification System.
 
 import os
 import time
-import json
 import hashlib
 import logging
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
 import pickle
-import numpy as np
 import pandas as pd
 from collections import defaultdict, Counter
 import openai
@@ -20,7 +18,6 @@ import tiktoken
 
 import concurrent.futures
 import threading
-from queue import Queue
 
 class TokenCounter:
     """Utility class for counting and managing OpenAI tokens with updated pricing."""
@@ -631,7 +628,7 @@ class OptimizedLLMClassificationManager:
             combined_texts.append(combined_text)
         
         # PERFORMANCE OPTIMIZATION: Use unique value processing
-        self.logger.info(f"Using optimized classification with unique value processing")
+        self.logger.info("Using optimized classification with unique value processing")
         classifications, metadata = classifier.classify_texts_with_unique_processing(combined_texts)
         
         # Add results to dataframe

@@ -5,12 +5,10 @@ import logging
 import shutil
 import datetime
 import pickle
-from pathlib import Path
 import psutil
 from pyspark.sql import SparkSession
 from collections import defaultdict
 import glob
-import nltk
 
 
 class Logger:
