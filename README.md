@@ -9,7 +9,7 @@ This tool takes your data files (like Excel or Stata files) with text columns an
 ### 1. Setup
 ```bash
 # Clone and setup
-git clone <repository-url>
+gh repo clone JuanLara18/Text-Classification-System
 cd text-classification-system
 python setup.py
 
