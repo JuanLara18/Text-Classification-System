@@ -1,0 +1,27 @@
+# tests/requirements_test.txt
+# Test-specific dependencies for AI Text Classification System
+# Install with: pip install -r tests/requirements_test.txt
+
+# Core testing framework
+pytest>=7.0.0
+pytest-mock>=3.8.0
+pytest-cov>=4.0.0
+
+# Essential dependencies (should already be installed)
+pandas>=1.5.0
+numpy>=1.21.0
+scikit-learn>=1.1.0
+PyYAML>=6.0
+
+# Testing utilities
+mock>=4.0.0
+coverage>=6.0.0
+parameterized>=0.8.0
+
+# Optional testing dependencies
+matplotlib>=3.5.0  # For visualization tests
+seaborn>=0.11.0    # For statistical plots
+
+# Development and debugging
+ipdb>=0.13.0       # Enhanced debugging
+memory_profiler>=0.60.0  # Memory profiling
