@@ -3,6 +3,7 @@ from .data_processor import DataProcessor, TextPreprocessor, FeatureExtractor
 from .classifier import EnhancedClassifierManager as ClassifierManager, BaseClusterer, KMeansClusterer, HDBSCANClusterer, AgglomerativeClusterer, ClusterLabeler
 from .evaluation import ClusteringEvaluator, ClusteringVisualizer, EvaluationReporter
 from .ai_classifier import OptimizedLLMClassificationManager, OptimizedOpenAIClassifier
+from .unique_row_processor import UniqueRowProcessor
 
 __all__ = [
     'Logger',
@@ -24,4 +25,5 @@ __all__ = [
     'EvaluationReporter',
     'OptimizedLLMClassificationManager',
     'OptimizedOpenAIClassifier',
+    'UniqueRowProcessor',
 ]

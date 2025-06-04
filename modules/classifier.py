@@ -10,6 +10,26 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+import warnings
+import random
+import openai
+from collections import defaultdict, Counter
+from pyspark.sql import DataFrame as SparkDataFrame
+import time
+import json
+
+import scipy.sparse
+# Import AI classification components
+from .ai_classifier import (
+    ClassificationCache,
+    OptimizedLLMClassificationManager,
+    TokenCounter,
+    OptimizedOpenAIClassifier,
+    UniqueValueProcessor  # Use the one from ai_classifier
+)
+from .unique_row_processor import UniqueRowProcessor
+
 from sklearn.metrics import silhouette_score
 
 from .ai_classifier import OptimizedLLMClassificationManager
@@ -1533,6 +1553,9 @@ class EnhancedClassifierManager:
         
         # Dictionary to store cluster assignments for each perspective
         self.cluster_assignments_dict = {}
+
+        # Performance stats for clustering perspectives
+        self.clustering_performance_stats = {}
         
         # Initialize OPTIMIZED LLM classification manager
         self.llm_manager = OptimizedLLMClassificationManager(config, logger)
@@ -1594,29 +1617,40 @@ class EnhancedClassifierManager:
     def _apply_clustering_perspective(self, dataframe, perspective_name, perspective_config):
         """Apply traditional clustering perspective."""
         self.logger.info(f"Applying clustering perspective: {perspective_name}")
-        
+
         try:
             # Get perspective configuration
             columns = perspective_config.get('columns', [])
             algorithm = perspective_config.get('algorithm', 'hdbscan').lower()
             output_column = perspective_config.get('output_column', f"{perspective_name}_cluster")
-            
+            start_time = time.time()
+
             # Check if we're working with a PySpark DataFrame
             from pyspark.sql import DataFrame as SparkDataFrame
             is_spark_df = isinstance(dataframe, SparkDataFrame)
-            
+
             # Convert to pandas if needed for feature extraction
             if is_spark_df:
                 pandas_df = dataframe.toPandas()
             else:
                 pandas_df = dataframe.copy()
-            
+
             # Preprocess text columns if needed
             pandas_df = self.data_processor.preprocess_text_columns(pandas_df, columns)
-            
+
+            # Determine columns to use for deduplication (use preprocessed if available)
+            dedupe_cols = []
+            for col in columns:
+                proc_col = f"{col}_preprocessed"
+                dedupe_cols.append(proc_col if proc_col in pandas_df.columns else col)
+
+            # Deduplicate rows based on relevant text columns
+            unique_processor = UniqueRowProcessor(self.logger)
+            unique_df, row_map = unique_processor.prepare_unique_rows(pandas_df, dedupe_cols)
+
             # Extract features for the specified columns
             _, features_dict = self.data_processor.extract_features(
-                pandas_df, text_columns=columns
+                unique_df, text_columns=columns
             )
             
             # Combine features from all columns for this perspective
@@ -1664,27 +1698,60 @@ class EnhancedClassifierManager:
             clusterer.fit(combined_features)
             cluster_assignments = clusterer.get_labels()
             
-            # Generate cluster labels
-            cluster_labels = self.cluster_labeler.generate_labels(
-                pandas_df, columns, output_column
+            # Map cluster assignments back to the full dataset
+            full_assignments = unique_processor.map_results_to_full(
+                cluster_assignments.tolist(), len(pandas_df)
             )
-            
+
+            # Generate cluster labels using unique rows
+            unique_df[output_column] = cluster_assignments
+            cluster_labels = self.cluster_labeler.generate_labels(
+                unique_df, columns, output_column
+            )
+
             # Add clustering results to dataframe
-            pandas_df[output_column] = cluster_assignments
-            
+            pandas_df[output_column] = full_assignments
+
             # Add cluster labels if generated
             if cluster_labels:
                 label_column = f"{output_column}_label"
-                pandas_df[label_column] = pandas_df[output_column].map(cluster_labels)
+                pandas_df[label_column] = [cluster_labels.get(cl) for cl in full_assignments]
             
+            # Replicate feature matrix back to full dataset for evaluation
+            import scipy.sparse
+            if scipy.sparse.issparse(combined_features):
+                rows = [None] * len(pandas_df)
+                for u_idx, idx_list in row_map.items():
+                    for idx in idx_list:
+                        rows[idx] = combined_features[u_idx]
+                full_features = scipy.sparse.vstack(rows)
+            else:
+                full_features = np.zeros((len(pandas_df), combined_features.shape[1]))
+                for u_idx, idx_list in row_map.items():
+                    for idx in idx_list:
+                        full_features[idx] = combined_features[u_idx]
+
             # Store results
             self.clusterers[perspective_name] = clusterer
-            self.features_dict[f"{perspective_name}_combined"] = combined_features
-            self.cluster_assignments_dict[perspective_name] = cluster_assignments
-            
-            self.logger.info(f"Clustering perspective {perspective_name} completed successfully")
-            
-            return pandas_df, combined_features, cluster_assignments
+            self.features_dict[f"{perspective_name}_combined"] = full_features
+            self.cluster_assignments_dict[perspective_name] = np.array(full_assignments)
+
+            processing_time = time.time() - start_time
+            reduction_ratio = len(unique_df) / len(pandas_df) if len(pandas_df) else 0
+            metadata = {
+                'original_count': len(pandas_df),
+                'unique_count': len(unique_df),
+                'reduction_ratio': reduction_ratio,
+                'processing_time': processing_time,
+                'algorithm': algorithm,
+                'columns_used': columns,
+            }
+            self.clustering_performance_stats[perspective_name] = metadata
+
+            self.logger.info(
+                f"Clustering perspective {perspective_name} completed in {processing_time:.2f}s - reduction {reduction_ratio:.1%}")
+
+            return pandas_df, full_features, np.array(full_assignments)
             
         except Exception as e:
             self.logger.error(f"Error applying clustering perspective {perspective_name}: {str(e)}")
@@ -1693,6 +1760,10 @@ class EnhancedClassifierManager:
     def get_ai_classification_stats(self) -> Dict[str, Any]:
         """Get enhanced statistics for all AI classification perspectives."""
         return self.llm_manager.get_all_stats()
+
+    def get_clustering_stats(self) -> Dict[str, Any]:
+        """Return performance statistics for clustering perspectives."""
+        return self.clustering_performance_stats
     
     def generate_comprehensive_report(self) -> str:
         """Generate a comprehensive performance report."""
