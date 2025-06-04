@@ -25,3 +25,14 @@ seaborn>=0.11.0    # For statistical plots
 # Development and debugging
 ipdb>=0.13.0       # Enhanced debugging
 memory_profiler>=0.60.0  # Memory profiling
+
+# Spark testing utilities
+pyspark
+sentence-transformers  # For Spark-based text processing tests
+
+openai  # For testing OpenAI API interactions
+umap-learn
+
+nltk
+hdbscan
+tiktoken
