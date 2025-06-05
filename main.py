@@ -563,9 +563,37 @@ class ClassificationPipeline:
             self.logger.error(traceback.format_exc())
             return None
 
+    def _identify_missing_rows(self, dataframe, columns):
+        """
+        Identify rows that have missing values in ANY of the specified columns.
+        
+        Args:
+            dataframe: DataFrame to check
+            columns: List of column names to check for missing values
+            
+        Returns:
+            Boolean mask indicating which rows have missing values
+        """
+        missing_mask = pd.Series(False, index=dataframe.index)
+        
+        for col in columns:
+            if col in dataframe.columns:
+                # Check for various types of missing values
+                col_missing = (
+                    dataframe[col].isna() | 
+                    dataframe[col].isnull() |
+                    (dataframe[col] == '') |
+                    (dataframe[col] == 'nan') |
+                    (dataframe[col] == 'None')
+                )
+                missing_mask = missing_mask | col_missing
+        
+        return missing_mask
+
     def apply_clustering_perspectives(self, dataframe):
         """
         Applies all clustering perspectives to the data.
+        FIXED: Now properly handles missing values in input columns.
 
         Args:
             dataframe: DataFrame with preprocessed data
@@ -613,6 +641,17 @@ class ClassificationPipeline:
                 self.logger.info(f"Applying perspective: {perspective_name}")
                 self.performance_monitor.start_timer(f'perspective_{perspective_name}')
                 
+                # FIXED: Track missing values for this perspective
+                perspective_columns = perspective_config.get('columns', [])
+                output_column = perspective_config.get('output_column')
+                
+                # Identify rows with missing values in input columns
+                missing_rows_mask = self._identify_missing_rows(pandas_df, perspective_columns)
+                missing_count = missing_rows_mask.sum()
+                
+                if missing_count > 0:
+                    self.logger.info(f"Perspective {perspective_name}: Found {missing_count} rows with missing values in input columns")
+                
                 # Apply the perspective
                 try:
                     # Check if the perspective has its own checkpoint
@@ -622,14 +661,19 @@ class ClassificationPipeline:
                         checkpoint_data = self.checkpoint_manager.load_checkpoint(perspective_checkpoint_key)
                         if checkpoint_data and len(checkpoint_data) == 3:
                             perspective_df, perspective_features, perspective_assignments = checkpoint_data
+                            
                             # Update the pandas DataFrame with the perspective's clustering column
-                            output_column = perspective_config.get('output_column')
                             if output_column in perspective_df.columns:
                                 pandas_df[output_column] = perspective_df[output_column]
+                                # FIXED: Apply missing values mask
+                                pandas_df.loc[missing_rows_mask, output_column] = pd.NA
+                                
                                 # If labels were generated, add them too
                                 label_column = f"{output_column}_label"
                                 if label_column in perspective_df.columns:
                                     pandas_df[label_column] = perspective_df[label_column]
+                                    # FIXED: Apply missing values mask to labels too
+                                    pandas_df.loc[missing_rows_mask, label_column] = pd.NA
                                 
                                 # Store features and assignments
                                 features_dict[f"{perspective_name}_combined"] = perspective_features
@@ -640,23 +684,31 @@ class ClassificationPipeline:
                                 continue
                     
                     # If no checkpoint or loading failed, process the perspective
-                    # Pass the pandas DataFrame to classify_perspective
                     perspective_df, perspective_features, perspective_assignments = self.classifier_manager.classify_perspective(
                         pandas_df, perspective_name, perspective_config
                     )
                     
                     # Update the pandas DataFrame with the perspective's output
-                    output_column = perspective_config.get('output_column')
                     pandas_df[output_column] = perspective_df[output_column]
+                    
+                    # FIXED: Apply missing values mask - set cluster assignments to missing for rows with missing input
+                    pandas_df.loc[missing_rows_mask, output_column] = pd.NA
                     
                     # If labels were generated, add them too
                     label_column = f"{output_column}_label"
                     if label_column in perspective_df.columns:
                         pandas_df[label_column] = perspective_df[label_column]
+                        # FIXED: Apply missing values mask to labels too
+                        pandas_df.loc[missing_rows_mask, label_column] = pd.NA
                     
-                    # Store features and assignments
+                    # Store features and assignments (keep original assignments for evaluation)
                     features_dict[f"{perspective_name}_combined"] = perspective_features
                     cluster_assignments_dict[perspective_name] = perspective_assignments
+                    
+                    # Log missing value handling
+                    if missing_count > 0:
+                        final_missing = pandas_df[output_column].isna().sum()
+                        self.logger.info(f"Perspective {perspective_name}: Set {final_missing} cluster assignments to missing due to missing input values")
                     
                     # Save checkpoint for this perspective
                     self.checkpoint_manager.save_checkpoint(
@@ -1217,8 +1269,8 @@ class ClassificationPipeline:
 
     def save_results(self, dataframe):
         """
-        Saves the results to output files with enhanced error handling and data cleaning.
-        FIXED: Handles data type issues and provides fallback options.
+        Saves the COMPLETE results with ALL original variables to output files.
+        FIXED: Now saves the entire dataset, not just essential columns.
         """
         try:
             self.logger.info("Saving classification results")
@@ -1231,13 +1283,12 @@ class ClassificationPipeline:
             output_dir = os.path.dirname(output_file)
             FileOperationUtilities.create_directory_if_not_exists(output_dir)
             
-            self.logger.info(f"Preparing DataFrame with {dataframe.shape[0]} rows and {dataframe.shape[1]} columns")
+            self.logger.info(f"Preparing COMPLETE DataFrame with {dataframe.shape[0]} rows and {dataframe.shape[1]} columns")
             
-            # FIXED: Clean and prepare DataFrame for Stata export
+            # FIXED: Save ALL columns from the original dataset
             df_to_save = dataframe.copy()
             
             # Fix column names for Stata compatibility
-            # Stata has limitations on column names
             column_mapping = {}
             for col in df_to_save.columns:
                 # Stata column names: max 32 chars, no special chars except underscore
@@ -1250,29 +1301,36 @@ class ClassificationPipeline:
                 df_to_save = df_to_save.rename(columns=column_mapping)
                 self.logger.info(f"Renamed {len(column_mapping)} columns for Stata compatibility")
             
-            # Fix data types for Stata compatibility
+            # Fix data types for Stata compatibility - but keep ALL columns
+            problematic_columns = []
             for col in df_to_save.columns:
-                # Convert object columns that look numeric
-                if df_to_save[col].dtype == 'object':
-                    try:
+                try:
+                    # Convert object columns that look numeric
+                    if df_to_save[col].dtype == 'object':
                         # Try to convert to numeric if possible
                         numeric_col = pd.to_numeric(df_to_save[col], errors='coerce')
                         if not numeric_col.isna().all():
                             df_to_save[col] = numeric_col
-                    except:
-                        # If conversion fails, keep as string but ensure it's clean
-                        df_to_save[col] = df_to_save[col].astype(str)
-                        # Replace NaN strings with actual NaN
-                        df_to_save[col] = df_to_save[col].replace(['nan', 'None', 'NaN'], pd.NA)
+                        else:
+                            # Keep as string but ensure it's clean
+                            df_to_save[col] = df_to_save[col].astype(str)
+                            # Replace problematic values
+                            df_to_save[col] = df_to_save[col].replace(['nan', 'None', 'NaN'], '')
+                except Exception as e:
+                    problematic_columns.append(col)
+                    self.logger.warning(f"Could not process column {col}: {e}")
+            
+            if problematic_columns:
+                self.logger.warning(f"Found {len(problematic_columns)} problematic columns that may cause Stata issues")
             
             # Handle missing values - Stata doesn't like certain NaN representations
             df_to_save = df_to_save.fillna('')
             
-            # Try to save to Stata format with error handling
+            # Try to save to Stata format with complete dataset
             try:
-                self.logger.info("Attempting to save in Stata format...")
+                self.logger.info("Attempting to save COMPLETE dataset in Stata format...")
                 df_to_save.to_stata(output_file, write_index=False, version=117)
-                self.logger.info(f"Successfully saved to Stata format: {output_file}")
+                self.logger.info(f"Successfully saved COMPLETE dataset to Stata format: {output_file}")
                 
             except Exception as stata_error:
                 self.logger.warning(f"Stata format save failed: {stata_error}")
@@ -1281,51 +1339,47 @@ class ClassificationPipeline:
                 try:
                     self.logger.info("Trying Stata version 118...")
                     df_to_save.to_stata(output_file, write_index=False, version=118)
-                    self.logger.info(f"Successfully saved to Stata format (v118): {output_file}")
+                    self.logger.info(f"Successfully saved COMPLETE dataset to Stata format (v118): {output_file}")
                     
                 except Exception as stata_error2:
                     self.logger.warning(f"Stata v118 save failed: {stata_error2}")
                     
-                    # Fallback 2: Save as CSV with .dta extension warning
-                    csv_file = output_file.replace('.dta', '_backup.csv')
-                    self.logger.warning(f"Saving as CSV backup: {csv_file}")
+                    # Fallback 2: Save as CSV and pickle for complete preservation
+                    csv_file = output_file.replace('.dta', '_complete.csv')
+                    self.logger.warning(f"Saving COMPLETE dataset as CSV: {csv_file}")
                     df_to_save.to_csv(csv_file, index=False)
                     
-                    # Also try to save as pickle for complete data preservation
-                    pickle_file = output_file.replace('.dta', '_backup.pkl')
+                    # Also save as pickle for complete data preservation
+                    pickle_file = output_file.replace('.dta', '_complete.pkl')
                     df_to_save.to_pickle(pickle_file)
-                    self.logger.info(f"Complete data saved as pickle: {pickle_file}")
+                    self.logger.info(f"Complete dataset saved as pickle: {pickle_file}")
                     
-                    # Try one more time with minimal data cleaning for Stata
+                    # Try one more time with only string conversion for Stata
                     try:
-                        # Keep only essential columns for Stata
-                        essential_cols = []
-                        perspectives = self.config.get_clustering_perspectives()
+                        self.logger.info("Trying final Stata save with string conversion...")
                         
-                        # Add original columns
-                        text_columns = self.config.get_text_columns()
-                        for col in text_columns:
-                            if col in df_to_save.columns:
-                                essential_cols.append(col)
+                        # Convert problematic columns to strings
+                        df_stata = df_to_save.copy()
+                        for col in problematic_columns:
+                            if col in df_stata.columns:
+                                df_stata[col] = df_stata[col].astype(str)
+                                df_stata[col] = df_stata[col].replace(['nan', 'None'], '')
                         
-                        # Add result columns
-                        for name, config in perspectives.items():
-                            output_col = config.get('output_column')
-                            if output_col in df_to_save.columns:
-                                essential_cols.append(output_col)
-                            label_col = f"{output_col}_label"
-                            if label_col in df_to_save.columns:
-                                essential_cols.append(label_col)
+                        # Remove any remaining problematic columns for Stata
+                        stata_safe_df = df_stata.copy()
+                        for col in df_stata.columns:
+                            try:
+                                # Test if column can be saved to Stata
+                                test_df = pd.DataFrame({col: df_stata[col].iloc[:10]})
+                                test_df.to_stata('test_temp.dta', write_index=False, version=117)
+                                os.remove('test_temp.dta')
+                            except:
+                                # Remove problematic column
+                                self.logger.warning(f"Removing column {col} for Stata compatibility")
+                                stata_safe_df = stata_safe_df.drop(columns=[col])
                         
-                        # Create minimal DataFrame
-                        minimal_df = df_to_save[essential_cols].copy()
-                        
-                        # Convert all to string to avoid type issues
-                        for col in minimal_df.columns:
-                            minimal_df[col] = minimal_df[col].astype(str)
-                        
-                        minimal_df.to_stata(output_file, write_index=False, version=117)
-                        self.logger.info(f"Successfully saved minimal version to Stata: {output_file}")
+                        stata_safe_df.to_stata(output_file, write_index=False, version=117)
+                        self.logger.info(f"Successfully saved dataset to Stata (some columns removed): {output_file}")
                         
                     except Exception as final_error:
                         self.logger.error(f"All Stata save attempts failed: {final_error}")
@@ -1344,16 +1398,17 @@ class ClassificationPipeline:
                     if label_column in dataframe.columns:
                         added_columns.append(label_column)
             
-            self.logger.info(f"Added classification columns: {', '.join(added_columns)}")
+            self.logger.info(f"COMPLETE dataset saved with ALL {dataframe.shape[1]} original columns")
+            self.logger.info(f"NEW classification columns added: {', '.join(added_columns)}")
             
             # Save timestamp file to mark successful completion
             timestamp_file = os.path.join(output_dir, f"classification_completed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
             with open(timestamp_file, 'w') as f:
                 f.write(f"Classification completed at {datetime.now()}\n")
                 f.write(f"Output file: {output_file}\n")
-                f.write(f"Added columns: {', '.join(added_columns)}\n")
+                f.write(f"Total columns saved: {dataframe.shape[1]}\n")
+                f.write(f"New classification columns: {', '.join(added_columns)}\n")
                 f.write(f"Total rows: {dataframe.shape[0]}\n")
-                f.write(f"Total columns: {dataframe.shape[1]}\n")
             
             return True
                 
@@ -1361,7 +1416,7 @@ class ClassificationPipeline:
             self.logger.error(f"Error saving results: {str(e)}")
             self.logger.error(traceback.format_exc())
             return False
-
+    
     def cleanup(self, error=False):
         """
         Cleans up resources and temporary files.

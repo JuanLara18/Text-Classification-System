@@ -773,60 +773,6 @@ class ClusterLabeler:
         
         self.logger.info(f"Initialized ClusterLabeler using '{self.method}' method")
 
-    def generate_labels(self, dataframe, text_columns, cluster_column):
-        """
-        Generates labels for clusters.
-
-        Args:
-            dataframe: DataFrame with the data
-            text_columns: Text columns used for clustering
-            cluster_column: Column with cluster assignments
-
-        Returns:
-            Dictionary mapping cluster IDs to labels
-        """
-        self.logger.info(f"Generating cluster labels for {cluster_column} using {self.method} method")
-        
-        try:
-            # Validate inputs
-            if cluster_column not in dataframe.columns:
-                raise ValueError(f"Cluster column '{cluster_column}' not found in DataFrame")
-            
-            for col in text_columns:
-                if col not in dataframe.columns:
-                    self.logger.warning(f"Text column '{col}' not found in DataFrame")
-            
-            # Filter to only use available columns
-            valid_text_columns = [col for col in text_columns if col in dataframe.columns]
-            
-            if not valid_text_columns:
-                raise ValueError("No valid text columns found for labeling")
-            
-            # Get cluster examples for labeling
-            cluster_examples = self._get_cluster_examples(dataframe, valid_text_columns, cluster_column)
-            
-            # Generate labels based on method
-            if self.method == 'openai':
-                labels = self.generate_openai_labels(cluster_examples)
-            elif self.method == 'tfidf':
-                labels = self.generate_tfidf_labels(dataframe, valid_text_columns, cluster_column)
-            elif self.method == 'manual':
-                # Placeholder for manual labeling - use cluster IDs as labels
-                unique_clusters = dataframe[cluster_column].unique()
-                labels = {cluster_id: f"Cluster {cluster_id}" for cluster_id in unique_clusters}
-            else:
-                self.logger.warning(f"Unknown labeling method: {self.method}. Using TF-IDF method instead.")
-                labels = self.generate_tfidf_labels(dataframe, valid_text_columns, cluster_column)
-            
-            self.logger.info(f"Generated {len(labels)} cluster labels")
-            return labels
-            
-        except Exception as e:
-            self.logger.error(f"Error generating cluster labels: {str(e)}")
-            # Return generic labels as fallback
-            unique_clusters = dataframe[cluster_column].unique()
-            return {cluster_id: f"Cluster {cluster_id}" for cluster_id in unique_clusters}
-    
     def _get_cluster_examples(self, dataframe, text_columns, cluster_column):
         """
         Gets representative examples from each cluster for labeling.
@@ -1517,6 +1463,146 @@ class ClusterLabeler:
                     labels[char['id']] = f"{perspective_name} Cluster {char['id']}"
             return labels         
         
+    def generate_simple_openai_labels(self, dataframe, text_columns, cluster_column):
+        """
+        Generate simple, descriptive cluster names using ChatGPT with an optimized prompt.
+        
+        Args:
+            dataframe: DataFrame with the data
+            text_columns: Text columns used for clustering  
+            cluster_column: Column with cluster assignments
+            
+        Returns:
+            Dictionary mapping cluster IDs to descriptive labels
+        """
+        self.logger.info(f"Generating simple ChatGPT labels for {cluster_column}")
+        
+        # Check if OpenAI is available
+        if self.method != 'openai':
+            self.logger.warning("OpenAI not configured, falling back to TF-IDF labels")
+            return self.generate_tfidf_labels(dataframe, text_columns, cluster_column)
+        
+        try:
+            import openai
+            
+            # Get OpenAI configuration
+            openai_config = self.labeling_config.get('openai', {})
+            model = openai_config.get('model', 'gpt-4o-mini')
+            api_key_env = openai_config.get('api_key_env', 'OPENAI_API_KEY')
+            
+            # Check API key
+            api_key = os.environ.get(api_key_env)
+            if not api_key:
+                self.logger.warning(f"OpenAI API key not found, using TF-IDF labels")
+                return self.generate_tfidf_labels(dataframe, text_columns, cluster_column)
+            
+            openai.api_key = api_key
+            
+            # Get unique clusters
+            unique_clusters = sorted(dataframe[cluster_column].dropna().unique())
+            labels = {}
+            
+            # For each cluster, get representative examples and create descriptive names
+            for cluster_id in unique_clusters:
+                cluster_mask = dataframe[cluster_column] == cluster_id
+                cluster_data = dataframe[cluster_mask]
+                
+                # Get up to 5 representative examples
+                sample_size = min(5, len(cluster_data))
+                if len(cluster_data) > sample_size:
+                    cluster_sample = cluster_data.sample(n=sample_size, random_state=42)
+                else:
+                    cluster_sample = cluster_data
+                
+                # Combine text from all specified columns for examples
+                examples = []
+                for _, row in cluster_sample.iterrows():
+                    example_parts = []
+                    for col in text_columns:
+                        if col in dataframe.columns and pd.notna(row[col]):
+                            text = str(row[col]).strip()
+                            if text:
+                                example_parts.append(text)
+                    
+                    if example_parts:
+                        combined_example = " | ".join(example_parts)
+                        # Truncate long examples
+                        if len(combined_example) > 200:
+                            combined_example = combined_example[:200] + "..."
+                        examples.append(combined_example)
+                
+                if not examples:
+                    labels[cluster_id] = f"Cluster {cluster_id}"
+                    continue
+                
+                # Create the prompt - OPTIMIZED FOR MAINTENANCE DATA
+                prompt = f"""You are an expert in industrial maintenance analysis. 
+
+    TASK: Create a short, descriptive name (2-4 words) for this maintenance cluster.
+
+    CLUSTER EXAMPLES:
+    {chr(10).join(f"{i+1}. {ex}" for i, ex in enumerate(examples))}
+
+    CLUSTER SIZE: {len(cluster_data)} maintenance records
+
+    INSTRUCTIONS:
+    - Focus on the main maintenance issue, equipment type, or failure pattern
+    - Use technical maintenance terminology when appropriate  
+    - Keep it concise (2-4 words maximum)
+    - Avoid generic terms like "Various Issues" or "Mixed Problems"
+    - Examples of good names: "Pump Mechanical Failure", "Conveyor Belt Issues", "Electrical Malfunctions"
+
+    CLUSTER NAME:"""
+
+                # Call OpenAI API
+                try:
+                    response = openai.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": "You are a maintenance expert who creates concise, technical cluster names. Respond with only the cluster name."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.1,  # Low temperature for consistency
+                        max_tokens=50
+                    )
+                    
+                    # Extract and clean the label
+                    label = response.choices[0].message.content.strip()
+                    label = label.strip('"\'').replace('\n', ' ')
+                    
+                    # Ensure it's not too long
+                    if len(label) > 50:
+                        label = label[:47] + "..."
+                    
+                    labels[cluster_id] = label
+                    self.logger.debug(f"Generated ChatGPT label for cluster {cluster_id}: {label}")
+                    
+                    # Small delay to respect rate limits
+                    time.sleep(0.2)
+                    
+                except Exception as e:
+                    self.logger.warning(f"Error generating ChatGPT label for cluster {cluster_id}: {str(e)}")
+                    labels[cluster_id] = f"Maintenance Cluster {cluster_id}"
+            
+            self.logger.info(f"Generated {len(labels)} ChatGPT cluster labels")
+            return labels
+            
+        except Exception as e:
+            self.logger.error(f"Error in ChatGPT label generation: {str(e)}")
+            return self.generate_tfidf_labels(dataframe, text_columns, cluster_column)
+
+    def generate_labels(self, dataframe, text_columns, cluster_column):
+        """Generate labels for clusters using the configured method."""
+        self.logger.info(f"Generating cluster labels for {cluster_column} using {self.method} method")
+        
+        if self.method == 'openai':
+            return self.generate_simple_openai_labels(dataframe, text_columns, cluster_column)
+        elif self.method == 'tfidf':
+            return self.generate_tfidf_labels(dataframe, text_columns, cluster_column)
+        else:
+            # Fallback to TF-IDF
+            return self.generate_tfidf_labels(dataframe, text_columns, cluster_column)
+
 
 class EnhancedClassifierManager:
     """Enhanced ClassifierManager that uses optimized AI processing."""
