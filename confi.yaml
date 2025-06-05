@@ -157,10 +157,10 @@ evaluation:
 
 # Spark settings for your system
 spark:
-  executor_memory: "22g"
-  driver_memory: "18g"
-  executor_cores: 4
-  default_parallelism: 12
+  executor_memory: "16g"
+  driver_memory: "16g"
+  executor_cores: 2
+  default_parallelism: 4
 
 # Disable checkpointing to save disk space
 checkpoint:
