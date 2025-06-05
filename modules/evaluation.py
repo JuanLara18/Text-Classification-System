@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score
@@ -8,7 +10,22 @@ from collections import Counter
 from datetime import datetime
 from typing import List, Dict, Any
 import umap
+import warnings
+warnings.filterwarnings('ignore')
 
+# Fix font issues on server
+matplotlib.rcParams['font.family'] = ['DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', 'sans-serif']
+matplotlib.rcParams['axes.unicode_minus'] = False  # Fix minus sign display
+matplotlib.rcParams['figure.max_open_warning'] = 0  # Disable warnings about too many figures
+
+# Set memory-efficient defaults
+matplotlib.rcParams['figure.figsize'] = [8, 6]
+matplotlib.rcParams['savefig.dpi'] = 150
+matplotlib.rcParams['savefig.bbox'] = 'tight'
+matplotlib.rcParams['font.size'] = 8
+
+# Ensure we can create figures in headless environment
+plt.ioff()  # Turn off interactive mode
 
 class ClusteringEvaluator:
     """Simple clustering evaluation with essential metrics."""
@@ -124,63 +141,173 @@ class ClassificationEvaluator:
 
 
 class SimpleVisualizer:
-    """Simplified visualizer for both clustering and classification."""
+    """FIXED: Simplified visualizer with better error handling and disk space management."""
     
     def __init__(self, config, logger, results_dir):
         self.config = config
         self.logger = logger
         self.results_dir = results_dir
-        os.makedirs(results_dir, exist_ok=True)
         
-        # Set consistent style
-        plt.style.use('default')
-        sns.set_palette("husl")
+        # Create results directory with error handling
+        try:
+            os.makedirs(results_dir, exist_ok=True)
+        except Exception as e:
+            self.logger.warning(f"Could not create results directory {results_dir}: {e}")
+            # Fallback to current directory
+            self.results_dir = "."
+        
+        # Set matplotlib to use minimal memory and disk space
+        plt.ioff()  # Turn off interactive mode
+        matplotlib.rcParams['figure.max_open_warning'] = 0
+        matplotlib.rcParams['font.size'] = 8  # Smaller fonts
+        
+        # Test write permissions
+        self._test_write_permissions()
+        
+    def _test_write_permissions(self):
+        """Test if we can write to the results directory."""
+        try:
+            test_file = os.path.join(self.results_dir, "test_write.tmp")
+            with open(test_file, 'w') as f:
+                f.write("test")
+            os.remove(test_file)
+            self.can_write = True
+            self.logger.info(f"Write permissions confirmed for {self.results_dir}")
+        except Exception as e:
+            self.can_write = False
+            self.logger.warning(f"Cannot write to {self.results_dir}: {e}")
+    
+    def _safe_save_plot(self, file_path, dpi=150, bbox_inches='tight'):
+        """Safely save plot with error handling and cleanup."""
+        if not self.can_write:
+            self.logger.warning("Cannot save plot - no write permissions")
+            plt.close()
+            return None
+            
+        try:
+            # Use lower DPI and tight bbox to save space
+            plt.savefig(file_path, dpi=dpi, bbox_inches=bbox_inches, 
+                       facecolor='white', edgecolor='none', format='png')
+            plt.close()  # Always close to free memory
+            
+            # Verify file was created and has content
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                self.logger.info(f"Successfully saved plot: {file_path}")
+                return file_path
+            else:
+                self.logger.warning(f"Plot file is empty or missing: {file_path}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Failed to save plot {file_path}: {e}")
+            plt.close()  # Ensure plot is closed even on error
+            
+            # Try saving with minimal settings as fallback
+            try:
+                plt.figure(figsize=(6, 4))
+                plt.text(0.5, 0.5, f'Visualization failed\nDue to: {str(e)[:50]}...', 
+                        ha='center', va='center', fontsize=10)
+                plt.xlim(0, 1)
+                plt.ylim(0, 1)
+                plt.title(f"Error in {os.path.basename(file_path)}")
+                plt.axis('off')
+                
+                fallback_path = file_path.replace('.png', '_error.png')
+                plt.savefig(fallback_path, dpi=100, bbox_inches='tight')
+                plt.close()
+                
+                if os.path.exists(fallback_path) and os.path.getsize(fallback_path) > 0:
+                    return fallback_path
+                    
+            except Exception as e2:
+                self.logger.error(f"Even fallback save failed: {e2}")
+                plt.close()
+                
+            return None
     
     def create_embeddings_plot(self, features, cluster_assignments, perspective_name):
-        """Create 2D embeddings plot with UMAP."""
+        """Create FIXED 2D embeddings plot with better error handling."""
         try:
-            # Reduce dimensionality if needed
-            if features.shape[1] > 2:
-                # Sample for large datasets
-                if features.shape[0] > 2000:
-                    indices = np.random.choice(features.shape[0], 2000, replace=False)
-                    features_sample = features[indices]
-                    cluster_sample = cluster_assignments[indices]
-                else:
-                    features_sample = features
-                    cluster_sample = cluster_assignments
-                
-                # Apply UMAP
-                reducer = umap.UMAP(n_components=2, random_state=42, n_neighbors=15, min_dist=0.1)
-                embedding = reducer.fit_transform(features_sample)
+            self.logger.info(f"Creating embeddings plot for {perspective_name}")
+            
+            # Handle sparse matrices
+            if hasattr(features, 'toarray'):
+                features = features.toarray()
+            
+            # Sample for large datasets to save memory and disk space
+            max_points = 1000
+            if features.shape[0] > max_points:
+                indices = np.random.choice(features.shape[0], max_points, replace=False)
+                features_sample = features[indices]
+                cluster_sample = cluster_assignments[indices]
+                self.logger.info(f"Sampled {max_points} points from {features.shape[0]} for visualization")
             else:
-                embedding = features
+                features_sample = features
                 cluster_sample = cluster_assignments
             
-            # Create plot
-            plt.figure(figsize=(10, 8))
-            scatter = plt.scatter(embedding[:, 0], embedding[:, 1], 
-                                c=cluster_sample, cmap='tab10', alpha=0.7, s=50)
-            plt.colorbar(scatter, label='Cluster')
-            plt.title(f'Cluster Visualization - {perspective_name}')
-            plt.xlabel('UMAP Dimension 1')
-            plt.ylabel('UMAP Dimension 2')
+            # Reduce dimensionality if needed
+            if features_sample.shape[1] > 2:
+                try:
+                    # Use simpler UMAP settings to save memory
+                    reducer = umap.UMAP(
+                        n_components=2, 
+                        random_state=42, 
+                        n_neighbors=min(15, len(features_sample)//4),
+                        min_dist=0.1,
+                        n_epochs=100,  # Fewer epochs for speed
+                        verbose=False
+                    )
+                    embedding = reducer.fit_transform(features_sample)
+                except Exception as e:
+                    self.logger.warning(f"UMAP failed: {e}, using PCA fallback")
+                    from sklearn.decomposition import PCA
+                    pca = PCA(n_components=2, random_state=42)
+                    embedding = pca.fit_transform(features_sample)
+            else:
+                embedding = features_sample
+            
+            # Create plot with minimal memory usage
+            plt.figure(figsize=(8, 6))
+            
+            # Use fewer colors for clusters
+            unique_clusters = np.unique(cluster_sample)
+            colors = plt.cm.tab10(np.linspace(0, 1, min(len(unique_clusters), 10)))
+            
+            for i, cluster_id in enumerate(unique_clusters):
+                mask = cluster_sample == cluster_id
+                if i < len(colors):
+                    color = colors[i]
+                else:
+                    color = 'gray'
+                
+                plt.scatter(embedding[mask, 0], embedding[mask, 1], 
+                           c=[color], label=f'Cluster {cluster_id}', 
+                           alpha=0.7, s=20, edgecolors='none')
+            
+            plt.title(f'Cluster Visualization - {perspective_name}', fontsize=12)
+            plt.xlabel('Dimension 1', fontsize=10)
+            plt.ylabel('Dimension 2', fontsize=10)
+            
+            # Limit legend entries
+            if len(unique_clusters) <= 10:
+                plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+            
+            plt.tight_layout()
             
             # Save plot
             file_path = os.path.join(self.results_dir, f"{perspective_name}_embeddings.png")
-            plt.savefig(file_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            
-            self.logger.info(f"Embeddings plot saved: {file_path}")
-            return file_path
+            return self._safe_save_plot(file_path)
             
         except Exception as e:
-            self.logger.error(f"Failed to create embeddings plot: {e}")
+            self.logger.error(f"Failed to create embeddings plot for {perspective_name}: {e}")
+            plt.close()
             return None
     
     def create_distribution_plot(self, assignments_or_classifications, perspective_name, is_classification=False):
-        """Create distribution plot for clusters or classifications."""
+        """Create FIXED distribution plot with better error handling."""
         try:
+            self.logger.info(f"Creating distribution plot for {perspective_name}")
+            
             # Count occurrences
             counter = Counter(assignments_or_classifications)
             
@@ -189,7 +316,18 @@ class SimpleVisualizer:
                 del counter[-1]
             
             if not counter:
+                self.logger.warning("No data to plot")
                 return None
+            
+            # Limit to top categories to save space
+            max_categories = 20
+            if len(counter) > max_categories:
+                # Keep top categories and group others
+                sorted_items = counter.most_common(max_categories - 1)
+                other_count = sum(count for item, count in counter.items() 
+                                if item not in dict(sorted_items))
+                sorted_items.append(('Others', other_count))
+                counter = dict(sorted_items)
             
             # Prepare data
             labels = list(counter.keys())
@@ -199,45 +337,57 @@ class SimpleVisualizer:
             sorted_data = sorted(zip(labels, counts), key=lambda x: x[1], reverse=True)
             labels, counts = zip(*sorted_data)
             
-            # Create plot
-            plt.figure(figsize=(12, 6))
-            bars = plt.bar(range(len(labels)), counts, color='skyblue', alpha=0.8)
+            # Create plot with appropriate size
+            fig_width = max(8, min(len(labels) * 0.8, 16))
+            plt.figure(figsize=(fig_width, 6))
             
-            # Add percentage labels
+            bars = plt.bar(range(len(labels)), counts, color='skyblue', alpha=0.8, edgecolor='navy', linewidth=0.5)
+            
+            # Add percentage labels on bars
             total = sum(counts)
             for i, (bar, count) in enumerate(zip(bars, counts)):
                 pct = count / total * 100
-                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
-                        f'{pct:.1f}%', ha='center', va='bottom')
+                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(counts)*0.01,
+                        f'{pct:.1f}%', ha='center', va='bottom', fontsize=8)
             
             # Format plot
-            plt.xlabel('Categories' if is_classification else 'Clusters')
-            plt.ylabel('Count')
-            plt.title(f'Distribution - {perspective_name}')
-            plt.xticks(range(len(labels)), [str(l) for l in labels], rotation=45, ha='right')
+            plt.xlabel('Categories' if is_classification else 'Clusters', fontsize=10)
+            plt.ylabel('Count', fontsize=10)
+            plt.title(f'Distribution - {perspective_name}', fontsize=12)
+            
+            # Handle x-axis labels
+            if len(labels) > 10:
+                # Rotate labels for many categories
+                plt.xticks(range(len(labels)), [str(l)[:20] + '...' if len(str(l)) > 20 else str(l) for l in labels], 
+                          rotation=45, ha='right', fontsize=8)
+            else:
+                plt.xticks(range(len(labels)), [str(l) for l in labels], fontsize=8)
+            
             plt.tight_layout()
             
             # Save plot
             suffix = "classification" if is_classification else "clustering"
             file_path = os.path.join(self.results_dir, f"{perspective_name}_{suffix}_distribution.png")
-            plt.savefig(file_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            
-            self.logger.info(f"Distribution plot saved: {file_path}")
-            return file_path
+            return self._safe_save_plot(file_path)
             
         except Exception as e:
-            self.logger.error(f"Failed to create distribution plot: {e}")
+            self.logger.error(f"Failed to create distribution plot for {perspective_name}: {e}")
+            plt.close()
             return None
     
     def create_silhouette_plot(self, features, cluster_assignments, perspective_name):
-        """Create silhouette analysis plot."""
+        """Create FIXED silhouette analysis plot."""
         try:
-            from sklearn.metrics import silhouette_samples
+            self.logger.info(f"Creating silhouette plot for {perspective_name}")
+            
+            # Handle sparse matrices
+            if hasattr(features, 'toarray'):
+                features = features.toarray()
             
             # Sample for large datasets
-            if features.shape[0] > 1000:
-                indices = np.random.choice(features.shape[0], 1000, replace=False)
+            max_samples = 500  # Smaller sample for silhouette analysis
+            if features.shape[0] > max_samples:
+                indices = np.random.choice(features.shape[0], max_samples, replace=False)
                 features_sample = features[indices]
                 cluster_sample = cluster_assignments[indices]
             else:
@@ -245,14 +395,17 @@ class SimpleVisualizer:
                 cluster_sample = cluster_assignments
             
             # Calculate silhouette scores
+            from sklearn.metrics import silhouette_samples
             silhouette_values = silhouette_samples(features_sample, cluster_sample)
             avg_score = np.mean(silhouette_values)
             
             # Create plot
-            fig, ax = plt.subplots(figsize=(10, 6))
+            plt.figure(figsize=(10, 6))
             
             y_lower = 10
             unique_clusters = sorted(np.unique(cluster_sample))
+            
+            colors = plt.cm.tab10(np.linspace(0, 1, len(unique_clusters)))
             
             for i, cluster in enumerate(unique_clusters):
                 cluster_silhouette_values = silhouette_values[cluster_sample == cluster]
@@ -261,33 +414,31 @@ class SimpleVisualizer:
                 size_cluster_i = len(cluster_silhouette_values)
                 y_upper = y_lower + size_cluster_i
                 
-                color = plt.cm.tab10(i % 10)
-                ax.fill_betweenx(np.arange(y_lower, y_upper),
-                               0, cluster_silhouette_values,
-                               facecolor=color, edgecolor=color, alpha=0.7)
+                color = colors[i % len(colors)]
+                plt.fill_betweenx(np.arange(y_lower, y_upper),
+                                 0, cluster_silhouette_values,
+                                 facecolor=color, edgecolor=color, alpha=0.7)
                 
-                ax.text(-0.05, y_lower + 0.5 * size_cluster_i, str(cluster))
+                plt.text(-0.05, y_lower + 0.5 * size_cluster_i, str(cluster), fontsize=8)
                 y_lower = y_upper + 10
             
-            ax.axvline(x=avg_score, color="red", linestyle="--", 
-                      label=f'Average Score: {avg_score:.3f}')
-            ax.set_xlabel('Silhouette Coefficient')
-            ax.set_ylabel('Cluster')
-            ax.set_title(f'Silhouette Analysis - {perspective_name}')
-            ax.legend()
+            plt.axvline(x=avg_score, color="red", linestyle="--", linewidth=2,
+                       label=f'Average Score: {avg_score:.3f}')
+            plt.xlabel('Silhouette Coefficient', fontsize=10)
+            plt.ylabel('Cluster', fontsize=10)
+            plt.title(f'Silhouette Analysis - {perspective_name}', fontsize=12)
+            plt.legend(fontsize=9)
+            
+            plt.tight_layout()
             
             # Save plot
             file_path = os.path.join(self.results_dir, f"{perspective_name}_silhouette.png")
-            plt.savefig(file_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            
-            self.logger.info(f"Silhouette plot saved: {file_path}")
-            return file_path
+            return self._safe_save_plot(file_path)
             
         except Exception as e:
-            self.logger.error(f"Failed to create silhouette plot: {e}")
+            self.logger.error(f"Failed to create silhouette plot for {perspective_name}: {e}")
+            plt.close()
             return None
-
 
 class SimpleReporter:
     """Simple markdown report generator."""
@@ -458,26 +609,74 @@ class SimpleReporter:
             return None
 
 
-# Compatibility classes for the main system
-class ClusteringVisualizer(SimpleVisualizer):
-    """Alias for backward compatibility."""
-    
-    def create_cluster_size_distribution_plot(self, cluster_assignments, cluster_names, perspective_name):
-        return self.create_distribution_plot(cluster_assignments, perspective_name, is_classification=False)
-    
-    def create_embeddings_plot(self, features, cluster_assignments, perspective_name):
-        return super().create_embeddings_plot(features, cluster_assignments, perspective_name)
-    
-    def create_silhouette_plot(self, features, cluster_assignments, perspective_name):
-        return super().create_silhouette_plot(features, cluster_assignments, perspective_name)
-
-
+# FIXED: Update the ClassificationVisualizer class
 class ClassificationVisualizer(SimpleVisualizer):
-    """Alias for backward compatibility."""
+    """FIXED: Classification visualizer with proper error handling."""
     
     def create_classification_distribution_plot(self, classifications, perspective_name, target_categories=None):
+        """Create distribution plot for classifications."""
         return self.create_distribution_plot(classifications, perspective_name, is_classification=True)
+    
+    def create_classification_comparison_plot(self, perspective_results, perspective_names):
+        """Create comparison plot for multiple classification perspectives."""
+        try:
+            self.logger.info("Creating classification comparison plot")
+            
+            if len(perspective_results) < 2:
+                self.logger.warning("Need at least 2 perspectives for comparison")
+                return None
+            
+            # Create subplots
+            n_perspectives = len(perspective_results)
+            fig, axes = plt.subplots(1, n_perspectives, figsize=(5*n_perspectives, 6))
+            
+            if n_perspectives == 2:
+                axes = [axes[0], axes[1]]
+            
+            for i, (name, results) in enumerate(perspective_results.items()):
+                ax = axes[i] if n_perspectives > 1 else axes
+                
+                counter = Counter(results)
+                labels = list(counter.keys())
+                counts = list(counter.values())
+                
+                # Sort by count
+                sorted_data = sorted(zip(labels, counts), key=lambda x: x[1], reverse=True)
+                labels, counts = zip(*sorted_data)
+                
+                bars = ax.bar(range(len(labels)), counts, alpha=0.7)
+                ax.set_title(f'{name}', fontsize=10)
+                ax.set_ylabel('Count', fontsize=9)
+                
+                # Rotate labels if many categories
+                if len(labels) > 5:
+                    ax.set_xticks(range(len(labels)))
+                    ax.set_xticklabels([str(l)[:10] + '...' if len(str(l)) > 10 else str(l) for l in labels], 
+                                      rotation=45, ha='right', fontsize=8)
+                else:
+                    ax.set_xticks(range(len(labels)))
+                    ax.set_xticklabels(labels, fontsize=8)
+            
+            plt.suptitle('Classification Perspectives Comparison', fontsize=12)
+            plt.tight_layout()
+            
+            # Save plot
+            file_path = os.path.join(self.results_dir, "classification_comparison.png")
+            return self._safe_save_plot(file_path)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create comparison plot: {e}")
+            plt.close()
+            return None
 
+
+# FIXED: Update the ClusteringVisualizer class  
+class ClusteringVisualizer(SimpleVisualizer):
+    """FIXED: Clustering visualizer with proper error handling."""
+    
+    def create_cluster_size_distribution_plot(self, cluster_assignments, cluster_names, perspective_name):
+        """Create distribution plot for clusters."""
+        return self.create_distribution_plot(cluster_assignments, perspective_name, is_classification=False)
 
 class EvaluationReporter(SimpleReporter):
     """Alias for backward compatibility."""
