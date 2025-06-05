@@ -65,27 +65,32 @@ class UniqueValueProcessor:
     def prepare_unique_classification(self, texts: List[str]) -> Tuple[List[str], Dict[str, List[int]]]:
         """
         Extract unique values and create mapping for efficient classification.
-        
-        Returns:
-            - List of unique texts to classify
-            - Mapping from unique text to original indices
+        FIXED: Less aggressive normalization to preserve meaningful distinctions.
         """
         self.logger.info(f"Processing {len(texts)} texts for unique value extraction")
         
         # Create mapping of unique values to their indices
         value_to_indices = defaultdict(list)
         for i, text in enumerate(texts):
-            # Normalize text for comparison (handle None, NaN, etc.)
-            normalized_text = str(text).strip().lower() if text and pd.notna(text) else ""
+            # FIXED: More conservative normalization - only handle None/NaN, keep original case and content
+            if text is None or pd.isna(text):
+                normalized_text = ""
+            else:
+                # Only strip whitespace, keep original case and punctuation
+                normalized_text = str(text).strip()
+                # Only treat as empty if it's actually empty after stripping
+                if not normalized_text:
+                    normalized_text = ""
+            
             value_to_indices[normalized_text].append(i)
         
-        # Get unique values (preserve original case)
+        # Get unique values (preserve original case and content)
         unique_texts = []
         self.value_map = {}
         
         for normalized_text, indices in value_to_indices.items():
             if normalized_text:  # Skip empty strings
-                # Use the first occurrence as the canonical form
+                # Use the first occurrence as the canonical form (preserves original formatting)
                 original_text = texts[indices[0]]
                 unique_texts.append(original_text)
                 self.value_map[original_text] = indices
