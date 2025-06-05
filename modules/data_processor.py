@@ -28,10 +28,29 @@ os.makedirs(nltk_data_path, exist_ok=True)
 os.environ["NLTK_DATA"] = nltk_data_path
 nltk.data.path.insert(0, nltk_data_path)
 
-# Download necessary resources to the specified location
-nltk.download('stopwords', download_dir=nltk_data_path, quiet=True)
-nltk.download('wordnet', download_dir=nltk_data_path, quiet=True)
-nltk.download('punkt_tab', download_dir=nltk_data_path, quiet=True)
+def ensure_nltk_data():
+    """Ensure NLTK data is available with proper error handling."""
+    try:
+        # Try to use existing data first
+        import nltk.data
+        nltk.data.find('corpora/stopwords')
+        nltk.data.find('corpora/wordnet')
+        nltk.data.find('tokenizers/punkt')
+        return True
+    except LookupError:
+        # Download if not found
+        try:
+            nltk.download('stopwords', download_dir=nltk_data_path, quiet=True)
+            nltk.download('wordnet', download_dir=nltk_data_path, quiet=True)
+            nltk.download('punkt', download_dir=nltk_data_path, quiet=True)  # Use 'punkt' instead of 'punkt_tab'
+            return True
+        except Exception as e:
+            print(f"Warning: NLTK download failed: {e}")
+            print("Some text preprocessing features may not work optimally.")
+            return False
+
+# Call the function
+ensure_nltk_data()
 
 # Ensure the resources are available
 try:
