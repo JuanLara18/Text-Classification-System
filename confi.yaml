@@ -1,0 +1,173 @@
+# FIXED Maintenance Classification + Clustering - 5 Perspectives
+# Fixed unique value processing and file saving issues
+
+input_file: "input/Maintenance_Classified_ErrorType.dta"
+output_file: "output/Maintenance_Hybrid_Fixed.dta"
+results_dir: "output/maintenance_hybrid_fixed"
+
+# ALL maintenance text columns
+text_columns:
+  - CauseDescription_EN
+  - CauseLongText_EN  
+  - TechnicalObjectDescription_EN
+  - DamagePatternLongText_EN
+
+# TESTING CONFIGURATION - Enabled for 5-minute test
+testing:
+  enabled: true
+  sample_size: 1000
+  sample_method: "random"
+  output_file: "output/Maintenance_test_fixed.dta"
+
+# FIXED: Less aggressive preprocessing to preserve text distinctions
+preprocessing:
+  lowercase: false  # Keep original case
+  remove_punctuation: false
+  remove_stopwords: false
+  lemmatize: false
+  min_word_length: 1  # Don't remove short words
+  max_length: 1000
+
+# 5 PERSPECTIVES: 1 AI + 4 Clustering (2, 5, 7, 10, 20 groups)
+clustering_perspectives:
+  # AI Classification - 5 main categories
+  ai_root_causes:
+    type: "openai_classification"
+    columns: ["CauseDescription_EN"]  # Single column to match the 298 distinct values
+    target_categories:
+      - "Mechanical Failure"
+      - "Electrical Issues" 
+      - "Human Error"
+      - "Material/Design Defect"
+      - "Other"
+    output_column: "ai_cause_5groups"
+    
+    llm_config:
+      provider: "openai"
+      model: "gpt-4o-mini"
+      temperature: 0.0
+      max_tokens: 15
+      api_key_env: "OPENAI_API_KEY"
+    
+    classification_config:
+      batch_size: 50  # Smaller batches for better control
+      unknown_category: "Other"
+
+  # Clustering - 2 broad groups
+  broad_categories:
+    type: "clustering"
+    algorithm: "kmeans"
+    columns: ["CauseDescription_EN", "CauseLongText_EN"]
+    output_column: "cluster_2groups"
+    params:
+      n_clusters: 2
+      n_init: 5
+      max_iter: 100
+      random_state: 42
+
+  # Clustering - 7 groups  
+  detailed_causes:
+    type: "clustering"
+    algorithm: "kmeans"
+    columns: ["CauseDescription_EN"]
+    output_column: "cluster_7groups"
+    params:
+      n_clusters: 7
+      n_init: 5
+      max_iter: 100
+      random_state: 42
+
+  # Clustering - 10 groups
+  equipment_patterns:
+    type: "clustering"
+    algorithm: "kmeans"
+    columns: ["TechnicalObjectDescription_EN", "DamagePatternLongText_EN"]
+    output_column: "cluster_10groups"
+    params:
+      n_clusters: 10
+      n_init: 5
+      max_iter: 100
+      random_state: 42
+
+  # Clustering - 20 detailed groups
+  fine_damage_patterns:
+    type: "clustering"
+    algorithm: "kmeans"
+    columns: ["DamagePatternLongText_EN"]
+    output_column: "cluster_20groups"
+    params:
+      n_clusters: 20
+      n_init: 5
+      max_iter: 100
+      random_state: 42
+
+# FIXED: Feature extraction settings
+feature_extraction:
+  method: "tfidf"
+  tfidf:
+    max_features: 1000
+    min_df: 1  # Don't ignore rare terms
+    max_df: 0.95  # Keep more terms
+    ngram_range: [1, 2]
+
+# AI Classification settings - FIXED
+ai_classification:
+  cost_management:
+    max_cost_per_run: 10.0
+  
+  caching:
+    enabled: true
+    cache_directory: "ai_cache"
+    preload_cache: true
+  
+  rate_limiting:
+    requests_per_minute: 500  # More conservative
+    concurrent_requests: 5    # Reduced for stability
+  
+  parallel_processing:
+    max_workers: 4  # Reduced for stability
+
+# Fast cluster labeling
+cluster_labeling:
+  method: "tfidf"
+  tfidf:
+    top_terms: 5
+
+# Minimal analysis for speed  
+cluster_analysis:
+  enabled: true
+  top_terms_count: 8
+  examples_count: 3
+  create_detailed_reports: false
+  cross_perspective_analysis: false
+
+# Basic evaluation
+evaluation:
+  metrics:
+    - 'silhouette_score'
+  visualizations: []  # Disable to avoid disk quota issues
+  output_format:
+    - 'json'  # Skip HTML to save disk space
+
+# FIXED: Optimized Spark settings for your system
+spark:
+  executor_memory: "22g"
+  driver_memory: "18g" 
+  executor_cores: 4
+  default_parallelism: 12
+
+# FIXED: Minimal checkpointing to save disk space
+checkpoint:
+  enabled: false  # Disable to avoid disk quota issues
+
+# Logging
+logging:
+  level: "INFO"
+  console_output: true
+  log_file: "logs/fixed_classification.log"
+
+# FIXED: Options
+options:
+  seed: 42
+  save_intermediate: false
+  clean_intermediate_on_success: true
