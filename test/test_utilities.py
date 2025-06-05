@@ -628,41 +628,61 @@ def run_utilities_tests():
     
     # Test Logger
     logger_tester = TestLogger()
-    logger_tester.test_logger_initialization_console_only()
-    logger_tester.test_logger_initialization_with_file()
-    logger_tester.test_logger_methods()
-    logger_tester.test_logger_fallback()
+    logger_tester.setup_method()  
+    try:
+        logger_tester.test_logger_initialization_console_only()
+        logger_tester.test_logger_initialization_with_file()
+        logger_tester.test_logger_methods()
+        logger_tester.test_logger_fallback()
+    finally:
+        logger_tester.teardown_method()  
     
     # Test SparkSessionManager
     spark_tester = TestSparkSessionManager()
-    spark_tester.test_spark_manager_initialization()
-    spark_tester.test_spark_session_creation()
-    spark_tester.test_spark_session_stop()
+    spark_tester.setup_method()  
+    try:
+        spark_tester.test_spark_manager_initialization()
+        spark_tester.test_spark_session_creation()
+        spark_tester.test_spark_session_stop()
+    finally:
+        spark_tester.teardown_method()  
     
     # Test FileOperationUtilities
     file_tester = TestFileOperationUtilities()
-    file_tester.test_create_directory_if_not_exists()
-    file_tester.test_create_directory_none_path()
-    file_tester.test_clean_directory()
-    file_tester.test_clean_nonexistent_directory()
+    file_tester.setup_method()  
+    try:
+        file_tester.test_create_directory_if_not_exists()
+        file_tester.test_create_directory_none_path()
+        file_tester.test_clean_directory()
+        file_tester.test_clean_nonexistent_directory()
+    finally:
+        file_tester.teardown_method()  
     
     # Test PerformanceMonitor
     perf_tester = TestPerformanceMonitor()
-    perf_tester.test_performance_monitor_initialization()
-    perf_tester.test_timer_functionality()
-    perf_tester.test_timer_nonexistent_operation()
-    perf_tester.test_memory_usage_tracking()
-    perf_tester.test_memory_recording_during_operations()
-    perf_tester.test_performance_report_generation()
+    perf_tester.setup_method()  
+    try:
+        perf_tester.test_performance_monitor_initialization()
+        perf_tester.test_timer_functionality()
+        perf_tester.test_timer_nonexistent_operation()
+        perf_tester.test_memory_usage_tracking()
+        perf_tester.test_memory_recording_during_operations()
+        perf_tester.test_performance_report_generation()
+    finally:
+        perf_tester.teardown_method()  
     
     # Test CheckpointManager
     checkpoint_tester = TestCheckpointManager()
-    checkpoint_tester.test_checkpoint_manager_initialization()
-    checkpoint_tester.test_checkpoint_save_and_load_pandas()
-    checkpoint_tester.test_checkpoint_save_and_load_tuple()
-    checkpoint_tester.test_checkpoint_nonexistent()
-    checkpoint_tester.test_checkpoint_cleanup()
-    checkpoint_tester.test_checkpoint_disabled()
+    checkpoint_tester.setup_method()  
+    try:
+        checkpoint_tester.test_checkpoint_manager_initialization()
+        checkpoint_tester.test_checkpoint_save_and_load_pandas()
+        checkpoint_tester.test_checkpoint_save_and_load_tuple()
+        checkpoint_tester.test_checkpoint_nonexistent()
+        checkpoint_tester.test_checkpoint_cleanup()
+        checkpoint_tester.test_checkpoint_disabled()
+    finally:
+        checkpoint_tester.teardown_method()  
     
     total_time = time.time() - start_time
     
@@ -670,6 +690,6 @@ def run_utilities_tests():
     print(f"✅ ALL UTILITIES TESTS PASSED")
     print(f"⏱️  Total execution time: {total_time:.3f}s")
     print("=" * 50)
-
+    
 if __name__ == "__main__":
     run_utilities_tests()

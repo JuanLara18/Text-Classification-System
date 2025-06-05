@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 tests/run_all_tests.py
-Main Test Runner for AI Text Classification System
-Executes all test suites and provides comprehensive reporting.
+Fixed Main Test Runner for AI Text Classification System
 """
 
 import os
@@ -66,11 +65,6 @@ class TestSuiteRunner:
     def run_test_suite(self, suite_name, test_function, is_slow=False):
         """
         Run a single test suite with error handling and timing.
-        
-        Args:
-            suite_name: Name of the test suite
-            test_function: Function to execute
-            is_slow: Whether this is a slow test
         """
         if is_slow and self.skip_slow:
             print(f"⏭️  SKIPPING {suite_name} (slow test)")
@@ -217,6 +211,39 @@ class TestSuiteRunner:
         
         print()
     
+    def setup_nltk_resources(self):
+        """Setup NLTK resources."""
+        print("📚 SETTING UP NLTK RESOURCES")
+        print("-" * 40)
+        
+        try:
+            import nltk
+            
+            # Set NLTK data path
+            nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
+            os.makedirs(nltk_data_path, exist_ok=True)
+            os.environ["NLTK_DATA"] = nltk_data_path
+            nltk.data.path.insert(0, nltk_data_path)
+            
+            # Download required resources
+            resources = ['stopwords', 'wordnet', 'punkt_tab']
+            for resource in resources:
+                try:
+                    print(f"📥 Downloading {resource}...")
+                    nltk.download(resource, download_dir=nltk_data_path, quiet=True)
+                    print(f"✅ {resource} ready")
+                except Exception as e:
+                    print(f"⚠️  Failed to download {resource}: {e}")
+            
+            print("✅ NLTK setup completed")
+            
+        except ImportError:
+            print("⚠️  NLTK not available, skipping NLTK setup")
+        except Exception as e:
+            print(f"⚠️  NLTK setup failed: {e}")
+        
+        print()
+    
     def generate_test_data_if_needed(self):
         """Generate test data if requested."""
         if not self.generate_data:
@@ -308,17 +335,18 @@ class TestSuiteRunner:
             print()
         
         # Performance summary
-        print("⚡ Performance Summary:")
-        print("-" * 40)
-        fastest = min(self.results.values(), key=lambda x: x['duration'])
-        slowest = max(self.results.values(), key=lambda x: x['duration'])
-        
-        fastest_name = [name for name, result in self.results.items() if result == fastest][0]
-        slowest_name = [name for name, result in self.results.items() if result == slowest][0]
-        
-        print(f"🚀 Fastest: {fastest_name} ({fastest['duration']:.2f}s)")
-        print(f"🐌 Slowest: {slowest_name} ({slowest['duration']:.2f}s)")
-        print()
+        if self.results:
+            print("⚡ Performance Summary:")
+            print("-" * 40)
+            fastest = min(self.results.values(), key=lambda x: x['duration'])
+            slowest = max(self.results.values(), key=lambda x: x['duration'])
+            
+            fastest_name = [name for name, result in self.results.items() if result == fastest][0]
+            slowest_name = [name for name, result in self.results.items() if result == slowest][0]
+            
+            print(f"🚀 Fastest: {fastest_name} ({fastest['duration']:.2f}s)")
+            print(f"🐌 Slowest: {slowest_name} ({slowest['duration']:.2f}s)")
+            print()
         
         # Final status
         if failed == 0:
@@ -398,6 +426,9 @@ def main():
         if not runner.check_dependencies():
             print("❌ Dependency check failed. Please install missing dependencies.")
             return 1
+        
+        # Setup NLTK resources
+        runner.setup_nltk_resources()
         
         # Generate test data if needed
         runner.generate_test_data_if_needed()

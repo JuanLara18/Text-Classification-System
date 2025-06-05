@@ -384,26 +384,38 @@ def run_data_processor_tests():
     
     # Test TextPreprocessor
     preprocessor_tester = TestTextPreprocessor()
-    preprocessor_tester.test_basic_preprocessing()
-    preprocessor_tester.test_null_handling()
-    preprocessor_tester.test_long_text_truncation()
-    preprocessor_tester.test_special_characters_removal()
-    preprocessor_tester.test_custom_stopwords()
+    preprocessor_tester.setup_method()  
+    try:
+        preprocessor_tester.test_basic_preprocessing()
+        preprocessor_tester.test_null_handling()
+        preprocessor_tester.test_long_text_truncation()
+        preprocessor_tester.test_special_characters_removal()
+        preprocessor_tester.test_custom_stopwords()
+    finally:
+        preprocessor_tester.teardown_method()  
     
     # Test FeatureExtractor
     extractor_tester = TestFeatureExtractor()
-    extractor_tester.test_tfidf_extraction()
-    extractor_tester.test_sentence_transformer_extraction()
-    extractor_tester.test_dimensionality_reduction()
-    extractor_tester.test_cache_functionality()
+    extractor_tester.setup_method()  
+    try:
+        extractor_tester.test_tfidf_extraction()
+        extractor_tester.test_sentence_transformer_extraction()
+        extractor_tester.test_dimensionality_reduction()
+        extractor_tester.test_cache_functionality()
+    finally:
+        extractor_tester.teardown_method()  
     
     # Test DataProcessor
     processor_tester = TestDataProcessor()
-    processor_tester.test_data_loading()
-    processor_tester.test_duplicate_removal()
-    processor_tester.test_text_preprocessing_integration()
-    processor_tester.test_feature_extraction_integration()
-    processor_tester.test_spark_integration()
+    processor_tester.setup_method()  
+    try:
+        processor_tester.test_data_loading()
+        processor_tester.test_duplicate_removal()
+        processor_tester.test_text_preprocessing_integration()
+        processor_tester.test_feature_extraction_integration()
+        processor_tester.test_spark_integration()
+    finally:
+        processor_tester.teardown_method()  
     
     total_time = time.time() - start_time
     
@@ -411,6 +423,5 @@ def run_data_processor_tests():
     print(f"✅ ALL DATA PROCESSOR TESTS PASSED")
     print(f"⏱️  Total execution time: {total_time:.3f}s")
     print("=" * 50)
-
 if __name__ == "__main__":
     run_data_processor_tests()

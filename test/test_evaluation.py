@@ -556,40 +556,64 @@ def run_evaluation_tests():
     
     # Test ClusteringEvaluator
     clustering_eval_tester = TestClusteringEvaluator()
-    clustering_eval_tester.test_clustering_evaluation_success()
-    clustering_eval_tester.test_clustering_evaluation_single_cluster()
-    clustering_eval_tester.test_clustering_evaluation_large_dataset()
+    clustering_eval_tester.setup_method()  
+    try:
+        clustering_eval_tester.test_clustering_evaluation_success()
+        clustering_eval_tester.test_clustering_evaluation_single_cluster()
+        clustering_eval_tester.test_clustering_evaluation_large_dataset()
+    finally:
+        clustering_eval_tester.teardown_method()  
     
     # Test ClassificationEvaluator
     classification_eval_tester = TestClassificationEvaluator()
-    classification_eval_tester.test_classification_evaluation_basic()
-    classification_eval_tester.test_classification_evaluation_perfect_balance()
-    classification_eval_tester.test_classification_evaluation_imbalanced()
-    classification_eval_tester.test_classification_evaluation_no_metadata()
+    classification_eval_tester.setup_method()  
+    try:
+        classification_eval_tester.test_classification_evaluation_basic()
+        classification_eval_tester.test_classification_evaluation_perfect_balance()
+        classification_eval_tester.test_classification_evaluation_imbalanced()
+        classification_eval_tester.test_classification_evaluation_no_metadata()
+    finally:
+        classification_eval_tester.teardown_method()  
     
     # Test SimpleVisualizer
     visualizer_tester = TestSimpleVisualizer()
-    visualizer_tester.test_embeddings_plot_creation()
-    visualizer_tester.test_distribution_plot_clustering()
-    visualizer_tester.test_distribution_plot_classification()
-    visualizer_tester.test_silhouette_plot_creation()
+    visualizer_tester.setup_method()  
+    try:
+        visualizer_tester.test_embeddings_plot_creation()
+        visualizer_tester.test_distribution_plot_clustering()
+        visualizer_tester.test_distribution_plot_classification()
+        visualizer_tester.test_silhouette_plot_creation()
+    finally:
+        visualizer_tester.teardown_method()  
     
     # Test SimpleReporter
     reporter_tester = TestSimpleReporter()
-    reporter_tester.test_clustering_report_generation()
-    reporter_tester.test_classification_report_generation()
-    reporter_tester.test_summary_report_generation()
+    reporter_tester.setup_method()  
+    try:
+        reporter_tester.test_clustering_report_generation()
+        reporter_tester.test_classification_report_generation()
+        reporter_tester.test_summary_report_generation()
+    finally:
+        reporter_tester.teardown_method()  
     
     # Test ClusterAnalyzer
     analyzer_tester = TestClusterAnalyzer()
-    analyzer_tester.test_cluster_content_analysis()
-    analyzer_tester.test_cluster_summary_generation()
+    analyzer_tester.setup_method()  
+    try:
+        analyzer_tester.test_cluster_content_analysis()
+        analyzer_tester.test_cluster_summary_generation()
+    finally:
+        analyzer_tester.teardown_method()  
     
     # Test Compatibility
     compatibility_tester = TestVisualizationCompatibility()
-    compatibility_tester.test_clustering_visualizer_compatibility()
-    compatibility_tester.test_classification_visualizer_compatibility()
-    compatibility_tester.test_evaluation_reporter_compatibility()
+    compatibility_tester.setup_method()  
+    try:
+        compatibility_tester.test_clustering_visualizer_compatibility()
+        compatibility_tester.test_classification_visualizer_compatibility()
+        compatibility_tester.test_evaluation_reporter_compatibility()
+    finally:
+        compatibility_tester.teardown_method()  
     
     total_time = time.time() - start_time
     
@@ -598,6 +622,6 @@ def run_evaluation_tests():
     print(f"⏱️  Total execution time: {total_time:.3f}s")
     print("💡 Note: Some visualization tests may show warnings if dependencies are missing")
     print("=" * 50)
-
+    
 if __name__ == "__main__":
     run_evaluation_tests()

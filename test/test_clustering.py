@@ -533,41 +533,69 @@ def run_clustering_tests():
     
     # Test BaseClusterer
     base_tester = TestBaseClusterer()
-    base_tester.test_base_clusterer_initialization()
-    base_tester.test_noise_cluster_handling()
+    base_tester.setup_method()  
+    try:
+        base_tester.test_base_clusterer_initialization()
+        base_tester.test_noise_cluster_handling()
+    finally:
+        base_tester.teardown_method()  
     
     # Test KMeansClusterer
     kmeans_tester = TestKMeansClusterer()
-    kmeans_tester.test_kmeans_initialization()
-    kmeans_tester.test_kmeans_fit_predict()
-    kmeans_tester.test_optimal_k_determination()
+    kmeans_tester.setup_method()  
+    try:
+        kmeans_tester.test_kmeans_initialization()
+        kmeans_tester.test_kmeans_fit_predict()
+        kmeans_tester.test_optimal_k_determination()
+    finally:
+        kmeans_tester.teardown_method()  
     
     # Test HDBSCANClusterer
     hdbscan_tester = TestHDBSCANClusterer()
-    hdbscan_tester.test_hdbscan_initialization()
-    hdbscan_tester.test_hdbscan_fit()
-    hdbscan_tester.test_over_fragmentation_handling()
+    hdbscan_tester.setup_method()  
+    try:
+        hdbscan_tester.test_hdbscan_initialization()
+        hdbscan_tester.test_hdbscan_fit()
+        hdbscan_tester.test_over_fragmentation_handling()
+    finally:
+        hdbscan_tester.teardown_method()  
     
     # Test AgglomerativeClusterer
     agg_tester = TestAgglomerativeClusterer()
-    agg_tester.test_agglomerative_initialization()
-    agg_tester.test_agglomerative_fit_predict()
+    agg_tester.setup_method()  
+    try:
+        agg_tester.test_agglomerative_initialization()
+        agg_tester.test_agglomerative_fit_predict()
+    finally:
+        agg_tester.teardown_method()  
     
     # Test ClusterLabeler
     labeler_tester = TestClusterLabeler()
-    labeler_tester.test_labeler_initialization()
-    labeler_tester.test_tfidf_label_generation()
-    labeler_tester.test_openai_label_generation()
+    labeler_tester.setup_method()  
+    try:
+        labeler_tester.test_labeler_initialization()
+        labeler_tester.test_tfidf_label_generation()
+        labeler_tester.test_openai_label_generation()
+    finally:
+        labeler_tester.teardown_method()  
     
     # Test UniqueRowProcessor
     processor_tester = TestUniqueRowProcessor()
-    processor_tester.test_unique_row_extraction()
-    processor_tester.test_result_mapping()
+    processor_tester.setup_method()  
+    try:
+        processor_tester.test_unique_row_extraction()
+        processor_tester.test_result_mapping()
+    finally:
+        processor_tester.teardown_method()  
     
     # Test EnhancedClassifierManager
     manager_tester = TestEnhancedClassifierManager()
-    manager_tester.test_manager_initialization()
-    manager_tester.test_perspective_type_detection()
+    manager_tester.setup_method()  
+    try:
+        manager_tester.test_manager_initialization()
+        manager_tester.test_perspective_type_detection()
+    finally:
+        manager_tester.teardown_method()  
     
     total_time = time.time() - start_time
     
@@ -575,6 +603,6 @@ def run_clustering_tests():
     print(f"✅ ALL CLUSTERING TESTS PASSED")
     print(f"⏱️  Total execution time: {total_time:.3f}s")
     print("=" * 50)
-
+    
 if __name__ == "__main__":
     run_clustering_tests()

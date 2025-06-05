@@ -470,33 +470,53 @@ def run_ai_classifier_tests():
     
     # Test UniqueValueProcessor
     processor_tester = TestUniqueValueProcessor()
-    processor_tester.test_unique_value_extraction()
-    processor_tester.test_result_mapping()
-    processor_tester.test_empty_and_null_handling()
+    processor_tester.setup_method()  
+    try:
+        processor_tester.test_unique_value_extraction()
+        processor_tester.test_result_mapping()
+        processor_tester.test_empty_and_null_handling()
+    finally:
+        processor_tester.teardown_method()  
     
     # Test TokenCounter
     counter_tester = TestTokenCounter()
-    counter_tester.test_token_counting()
-    counter_tester.test_cost_estimation()
+    counter_tester.setup_method()  
+    try:
+        counter_tester.test_token_counting()
+        counter_tester.test_cost_estimation()
+    finally:
+        counter_tester.teardown_method()  
     
     # Test ClassificationCache
     cache_tester = TestClassificationCache()
-    cache_tester.test_cache_set_and_get()
-    cache_tester.test_cache_miss()
-    cache_tester.test_cache_persistence()
+    cache_tester.setup_method()  
+    try:
+        cache_tester.test_cache_set_and_get()
+        cache_tester.test_cache_miss()
+        cache_tester.test_cache_persistence()
+    finally:
+        cache_tester.teardown_method()  
     
     # Test OptimizedOpenAIClassifier
     classifier_tester = TestOptimizedOpenAIClassifier()
-    classifier_tester.test_classifier_initialization()
-    classifier_tester.test_single_classification_mock()
-    classifier_tester.test_bulk_classification_with_unique_processing()
-    classifier_tester.test_response_validation()
+    classifier_tester.setup_method()  
+    try:
+        classifier_tester.test_classifier_initialization()
+        classifier_tester.test_single_classification_mock()
+        classifier_tester.test_bulk_classification_with_unique_processing()
+        classifier_tester.test_response_validation()
+    finally:
+        classifier_tester.teardown_method()  
     
     # Test OptimizedLLMClassificationManager
     manager_tester = TestOptimizedLLMClassificationManager()
-    manager_tester.test_classifier_creation()
-    manager_tester.test_perspective_classification()
-    manager_tester.test_statistics_collection()
+    manager_tester.setup_method()  
+    try:
+        manager_tester.test_classifier_creation()
+        manager_tester.test_perspective_classification()
+        manager_tester.test_statistics_collection()
+    finally:
+        manager_tester.teardown_method()  
     
     total_time = time.time() - start_time
     
@@ -505,6 +525,6 @@ def run_ai_classifier_tests():
     print(f"⏱️  Total execution time: {total_time:.3f}s")
     print("💡 Note: Some tests mocked OpenAI API calls for testing")
     print("=" * 50)
-
+        
 if __name__ == "__main__":
     run_ai_classifier_tests()
