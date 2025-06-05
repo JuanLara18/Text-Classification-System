@@ -29,8 +29,9 @@ os.environ["NLTK_DATA"] = nltk_data_path
 nltk.data.path.insert(0, nltk_data_path)
 
 # Download necessary resources to the specified location
-nltk.download('stopwords', download_dir=nltk_data_path)
-nltk.download('wordnet', download_dir=nltk_data_path)
+nltk.download('stopwords', download_dir=nltk_data_path, quiet=True)
+nltk.download('wordnet', download_dir=nltk_data_path, quiet=True)
+nltk.download('punkt_tab', download_dir=nltk_data_path, quiet=True)
 
 # Ensure the resources are available
 try:
