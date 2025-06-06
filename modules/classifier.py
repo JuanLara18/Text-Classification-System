@@ -762,7 +762,7 @@ class ClusterLabeler:
 
                 # Attempt a basic validation call
                 try:
-                    openai.models.list(limit=1)
+                    list(openai.models.list())
                     self.logger.info("Successfully validated OpenAI API key")
                 except Exception as e:
                     self.logger.warning(

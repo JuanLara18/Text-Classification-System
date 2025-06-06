@@ -1269,30 +1269,71 @@ class ClassificationPipeline:
 
     def save_results(self, dataframe):
         """
-        Saves the COMPLETE results with ALL original variables to output files.
-        FIXED: Now saves the entire dataset, not just essential columns.
+        FIXED: Saves results to Stata format with robust data cleaning.
         """
         try:
             self.logger.info("Saving classification results")
             
-            # Get output file path
             output_file = self.config.get_output_file_path()
             self.logger.info(f"Saving results to {output_file}")
             
-            # Ensure the directory exists
+            # Ensure directory exists
             output_dir = os.path.dirname(output_file)
             FileOperationUtilities.create_directory_if_not_exists(output_dir)
             
-            self.logger.info(f"Preparing COMPLETE DataFrame with {dataframe.shape[0]} rows and {dataframe.shape[1]} columns")
-            
-            # FIXED: Save ALL columns from the original dataset
+            # STEP 1: Clean the DataFrame for Stata compatibility
             df_to_save = dataframe.copy()
+            self.logger.info(f"Preparing DataFrame with {df_to_save.shape[0]} rows and {df_to_save.shape[1]} columns")
             
-            # Fix column names for Stata compatibility
+            # STEP 2: Identify classification columns we added
+            perspectives = self.config.get_clustering_perspectives()
+            new_columns = []
+            for name, config in perspectives.items():
+                output_col = config.get('output_column')
+                if output_col in df_to_save.columns:
+                    new_columns.append(output_col)
+                    label_col = f"{output_col}_label"
+                    if label_col in df_to_save.columns:
+                        new_columns.append(label_col)
+            
+            self.logger.info(f"New classification columns: {new_columns}")
+            
+            # STEP 3: Fix data types for ALL columns
+            problematic_columns = []
+            for col in df_to_save.columns:
+                try:
+                    # Check if column has problematic data
+                    if df_to_save[col].dtype == 'object':
+                        # Check if it's all NaN/None
+                        non_null_count = df_to_save[col].count()
+                        if non_null_count == 0:
+                            # All null - drop this column
+                            problematic_columns.append(col)
+                            continue
+                        
+                        # Try to clean object columns
+                        # Convert to string and handle NaN properly
+                        df_to_save[col] = df_to_save[col].astype(str)
+                        df_to_save[col] = df_to_save[col].replace(['nan', 'None', 'NaN', '<NA>'], '')
+                        
+                    # Handle other problematic types
+                    elif df_to_save[col].dtype.name.startswith('datetime'):
+                        # Convert datetime to string
+                        df_to_save[col] = df_to_save[col].astype(str).replace('NaT', '')
+                    
+                except Exception as e:
+                    self.logger.warning(f"Column {col} has issues: {e}")
+                    problematic_columns.append(col)
+            
+            # STEP 4: Remove problematic columns
+            if problematic_columns:
+                self.logger.warning(f"Removing {len(problematic_columns)} problematic columns for Stata compatibility")
+                df_to_save = df_to_save.drop(columns=problematic_columns)
+            
+            # STEP 5: Clean column names for Stata
             column_mapping = {}
             for col in df_to_save.columns:
-                # Stata column names: max 32 chars, no special chars except underscore
-                clean_col = str(col)[:32]
+                clean_col = str(col)[:32]  # Stata limit
                 clean_col = re.sub(r'[^a-zA-Z0-9_]', '_', clean_col)
                 if clean_col != col:
                     column_mapping[col] = clean_col
@@ -1301,122 +1342,87 @@ class ClassificationPipeline:
                 df_to_save = df_to_save.rename(columns=column_mapping)
                 self.logger.info(f"Renamed {len(column_mapping)} columns for Stata compatibility")
             
-            # Fix data types for Stata compatibility - but keep ALL columns
-            problematic_columns = []
-            for col in df_to_save.columns:
-                try:
-                    # Convert object columns that look numeric
-                    if df_to_save[col].dtype == 'object':
-                        # Try to convert to numeric if possible
-                        numeric_col = pd.to_numeric(df_to_save[col], errors='coerce')
-                        if not numeric_col.isna().all():
-                            df_to_save[col] = numeric_col
-                        else:
-                            # Keep as string but ensure it's clean
-                            df_to_save[col] = df_to_save[col].astype(str)
-                            # Replace problematic values
-                            df_to_save[col] = df_to_save[col].replace(['nan', 'None', 'NaN'], '')
-                except Exception as e:
-                    problematic_columns.append(col)
-                    self.logger.warning(f"Could not process column {col}: {e}")
-            
-            if problematic_columns:
-                self.logger.warning(f"Found {len(problematic_columns)} problematic columns that may cause Stata issues")
-            
-            # Handle missing values - Stata doesn't like certain NaN representations
+            # STEP 6: Final data cleaning
+            # Replace any remaining NaN with empty strings
             df_to_save = df_to_save.fillna('')
             
-            # Try to save to Stata format with complete dataset
+            # Ensure all columns are proper types
+            for col in df_to_save.columns:
+                if df_to_save[col].dtype == 'object':
+                    df_to_save[col] = df_to_save[col].astype(str)
+            
+            # STEP 7: Try to save to Stata format
             try:
-                self.logger.info("Attempting to save COMPLETE dataset in Stata format...")
+                self.logger.info("Attempting to save in Stata format...")
                 df_to_save.to_stata(output_file, write_index=False, version=117)
-                self.logger.info(f"Successfully saved COMPLETE dataset to Stata format: {output_file}")
+                self.logger.info(f"✅ Successfully saved to Stata format: {output_file}")
                 
             except Exception as stata_error:
-                self.logger.warning(f"Stata format save failed: {stata_error}")
+                self.logger.warning(f"Stata save failed: {stata_error}")
                 
-                # Fallback 1: Try with version 118
+                # STEP 8: Fallback - try with only essential columns
                 try:
-                    self.logger.info("Trying Stata version 118...")
-                    df_to_save.to_stata(output_file, write_index=False, version=118)
-                    self.logger.info(f"Successfully saved COMPLETE dataset to Stata format (v118): {output_file}")
+                    self.logger.info("Trying with essential columns only...")
                     
-                except Exception as stata_error2:
-                    self.logger.warning(f"Stata v118 save failed: {stata_error2}")
+                    # Get text columns + new classification columns
+                    text_columns = self.config.get_text_columns()
+                    essential_cols = []
                     
-                    # Fallback 2: Save as CSV and pickle for complete preservation
-                    csv_file = output_file.replace('.dta', '_complete.csv')
-                    self.logger.warning(f"Saving COMPLETE dataset as CSV: {csv_file}")
+                    # Add original text columns
+                    for col in text_columns:
+                        if col in df_to_save.columns:
+                            essential_cols.append(col)
+                    
+                    # Add new classification columns
+                    essential_cols.extend([col for col in new_columns if col in df_to_save.columns])
+                    
+                    # Add a few key identifier columns if they exist
+                    key_cols = ['id', 'ID', 'key', 'index']
+                    for key_col in key_cols:
+                        if key_col in df_to_save.columns and key_col not in essential_cols:
+                            essential_cols.append(key_col)
+                    
+                    # Create minimal DataFrame
+                    minimal_df = df_to_save[essential_cols].copy()
+                    
+                    # Save minimal version
+                    minimal_df.to_stata(output_file, write_index=False, version=117)
+                    self.logger.info(f"✅ Successfully saved essential columns to Stata: {output_file}")
+                    
+                    # Save complete version as backup
+                    backup_file = output_file.replace('.dta', '_complete.csv')
+                    df_to_save.to_csv(backup_file, index=False)
+                    self.logger.info(f"Complete dataset saved as CSV backup: {backup_file}")
+                    
+                except Exception as final_error:
+                    self.logger.error(f"All save attempts failed: {final_error}")
+                    
+                    # Ultimate fallback - save as CSV but warn user
+                    csv_file = output_file.replace('.dta', '.csv')
                     df_to_save.to_csv(csv_file, index=False)
-                    
-                    # Also save as pickle for complete data preservation
-                    pickle_file = output_file.replace('.dta', '_complete.pkl')
-                    df_to_save.to_pickle(pickle_file)
-                    self.logger.info(f"Complete dataset saved as pickle: {pickle_file}")
-                    
-                    # Try one more time with only string conversion for Stata
-                    try:
-                        self.logger.info("Trying final Stata save with string conversion...")
-                        
-                        # Convert problematic columns to strings
-                        df_stata = df_to_save.copy()
-                        for col in problematic_columns:
-                            if col in df_stata.columns:
-                                df_stata[col] = df_stata[col].astype(str)
-                                df_stata[col] = df_stata[col].replace(['nan', 'None'], '')
-                        
-                        # Remove any remaining problematic columns for Stata
-                        stata_safe_df = df_stata.copy()
-                        for col in df_stata.columns:
-                            try:
-                                # Test if column can be saved to Stata
-                                test_df = pd.DataFrame({col: df_stata[col].iloc[:10]})
-                                test_df.to_stata('test_temp.dta', write_index=False, version=117)
-                                os.remove('test_temp.dta')
-                            except:
-                                # Remove problematic column
-                                self.logger.warning(f"Removing column {col} for Stata compatibility")
-                                stata_safe_df = stata_safe_df.drop(columns=[col])
-                        
-                        stata_safe_df.to_stata(output_file, write_index=False, version=117)
-                        self.logger.info(f"Successfully saved dataset to Stata (some columns removed): {output_file}")
-                        
-                    except Exception as final_error:
-                        self.logger.error(f"All Stata save attempts failed: {final_error}")
-                        # Final fallback - save as CSV with .dta extension
-                        df_to_save.to_csv(output_file, index=False)
-                        self.logger.warning(f"Saved as CSV with .dta extension: {output_file}")
+                    self.logger.error(f"❌ Saved as CSV instead: {csv_file}")
+                    self.logger.error("❌ STATA FILE COULD NOT BE CREATED - CHECK CSV FILE")
+                    return False
             
-            # Log summary of added columns
-            perspectives = self.config.get_clustering_perspectives()
-            added_columns = []
-            for name, config in perspectives.items():
-                output_column = config.get('output_column')
-                if output_column in dataframe.columns:
-                    added_columns.append(output_column)
-                    label_column = f"{output_column}_label"
-                    if label_column in dataframe.columns:
-                        added_columns.append(label_column)
+            # STEP 9: Log success
+            self.logger.info(f"Added classification columns: {', '.join(new_columns)}")
             
-            self.logger.info(f"COMPLETE dataset saved with ALL {dataframe.shape[1]} original columns")
-            self.logger.info(f"NEW classification columns added: {', '.join(added_columns)}")
-            
-            # Save timestamp file to mark successful completion
+            # Create completion marker
             timestamp_file = os.path.join(output_dir, f"classification_completed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
             with open(timestamp_file, 'w') as f:
                 f.write(f"Classification completed at {datetime.now()}\n")
                 f.write(f"Output file: {output_file}\n")
-                f.write(f"Total columns saved: {dataframe.shape[1]}\n")
-                f.write(f"New classification columns: {', '.join(added_columns)}\n")
+                f.write(f"Added columns: {', '.join(new_columns)}\n")
                 f.write(f"Total rows: {dataframe.shape[0]}\n")
+                f.write(f"Final columns: {df_to_save.shape[1]}\n")
             
             return True
-                
+            
         except Exception as e:
             self.logger.error(f"Error saving results: {str(e)}")
             self.logger.error(traceback.format_exc())
             return False
-    
+
     def cleanup(self, error=False):
         """
         Cleans up resources and temporary files.

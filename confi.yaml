@@ -129,11 +129,9 @@ cluster_labeling:
   method: "openai"  # Changed from "tfidf" to "openai"
   openai:
     model: "gpt-4o-mini"
-    temperature: 0.1
+    temperature: 0.3
     max_tokens: 50
     api_key_env: "OPENAI_API_KEY"
-  tfidf:
-    top_terms: 5
 
 # Basic analysis
 cluster_analysis:
