@@ -602,7 +602,6 @@ evaluation:
 
 # Spark settings optimized for 6 CPU, 50GB RAM
 spark:
-  enabled: false
  executor_memory: "40g"    # Use 80% of available RAM
   driver_memory: "8g"       # Reserve some RAM for system
   executor_cores: 2         # 2 cores per executor
