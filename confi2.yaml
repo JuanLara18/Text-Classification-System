@@ -1,5 +1,6 @@
-# BMW Manufacturing Error Classification Configuration - COMPLETE VERSION
+# BMW Manufacturing Error Classification Configuration - OPTIMIZED FOR HIGH PERFORMANCE
 # 10 Total Perspectives: 2 Industry Standard + 4 Expert Defined + 4 GPT Data Analysis
+# Hardware: 12 CPUs, 128GB RAM - Optimized for speed and throughput
 
 input_file: "input/Maintenance_Classified.dta"
 output_file: "output/BMW_Manufacturing_Errors_ALL_Classifications.dta"
@@ -17,7 +18,7 @@ text_columns:
 # Testing configuration for faster runs
 testing:
   enabled: true
-  sample_size: 2000
+  sample_size: 3000  # Increased for high-performance system
   sample_method: "random"
   output_file: "output/BMW_test_ALL_classifications.dta"
 
@@ -53,29 +54,27 @@ clustering_perspectives:
     
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"
+      model: "gpt-3.5-turbo-0125"  # Faster model for high throughput
       temperature: 0.0
-      max_tokens: 25
+      max_tokens: 15  # Reduced for speed
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 50
+      batch_size: 100  # Increased batch size for high-performance system
       unknown_category: "Unknown"
       prompt_template: |
-        You are an automotive quality control expert familiar with ISO standards and IATF 16949. Classify this BMW manufacturing error by severity level following industry standards.
+        Classify this BMW manufacturing error by severity level following automotive industry standards.
 
-        CONTEXT: BMW production error data requiring severity classification for quality management decisions. This follows automotive industry standards for defect severity assessment.
-
-        SEVERITY DEFINITIONS (Industry Standard):
-        - "Critical Defects": Completely unusable products, safety hazards, potential lawsuits/recalls
-        - "Major Defects": Significantly depart from specifications, affect appearance/performance/function
-        - "Minor Defects": Don't fully comply with specs but still usable, minimal impact on salability
+        SEVERITY LEVELS:
+        - "Critical Defects": Safety hazards, unusable products, potential recalls
+        - "Major Defects": Significant spec deviations, affect function/performance
+        - "Minor Defects": Minor spec non-compliance, minimal impact
         - "Other": Clear errors not fitting severity categories
-        - "Unknown": Insufficient information for severity assessment
+        - "Unknown": Insufficient information
 
-        ERROR DATA: {text}
+        ERROR: {text}
 
-        Classify by severity level. Respond with category name only.
+        Category name only:
 
   # Industry Standard: Origin-Based Classification  
   bmw_errors_origin:
@@ -91,29 +90,27 @@ clustering_perspectives:
     
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"
+      model: "gpt-3.5-turbo-0125"
       temperature: 0.0
-      max_tokens: 25
+      max_tokens: 15
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 50
+      batch_size: 100
       unknown_category: "Unknown"
       prompt_template: |
-        You are a BMW manufacturing engineer expert in root cause analysis and FMEA. Classify this error by its fundamental origin following automotive industry standards.
+        Classify this BMW error by origin following automotive standards.
 
-        CONTEXT: BMW manufacturing error requiring origin classification for systematic root cause analysis and corrective action planning.
+        ORIGINS:
+        - "Manufacturing Defects": Production process errors, assembly issues
+        - "Design Flaws": Engineering design problems, specification issues
+        - "Mislabeling": Documentation errors, incorrect labeling
+        - "Other": Clear origin not fitting above
+        - "Unknown": Insufficient data
 
-        ORIGIN CATEGORIES (Industry Standard):
-        - "Manufacturing Defects": Production process errors, assembly issues, quality control failures
-        - "Design Flaws": Engineering design problems, specification issues, inherent product defects
-        - "Mislabeling": Documentation errors, incorrect labeling, information management issues
-        - "Other": Clear origin not fitting above categories
-        - "Unknown": Insufficient data to determine origin
+        ERROR: {text}
 
-        ERROR DATA: {text}
-
-        Classify by error origin. Respond with category name only.
+        Category name only:
 
   # =============================================================================
   # EXPERT DEFINED CLASSIFICATIONS (4 perspectives)
@@ -132,28 +129,26 @@ clustering_perspectives:
     
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"
+      model: "gpt-3.5-turbo-0125"
       temperature: 0.0
-      max_tokens: 25
+      max_tokens: 10
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 50
+      batch_size: 100
       unknown_category: "Unknown"
       prompt_template: |
-        You are a BMW manufacturing systems expert. Classify this error into fundamental failure categories based on expert automotive manufacturing knowledge.
+        Classify BMW error into expert categories:
 
-        CONTEXT: High-level expert classification separating physical mechanical issues from process/operational problems.
-
-        EXPERT CATEGORIES:
+        CATEGORIES:
         - "Design Errors": Physical component breakdowns, wear, structural failures
-        - "Process Errors": Process errors, procedure deviations, operational inefficiencies
-        - "Other": Clear errors not fitting mechanical/operational distinction
-        - "Unknown": Insufficient information for classification
+        - "Process Errors": Process deviations, procedure errors, operational issues
+        - "Other": Clear errors not fitting above
+        - "Unknown": Insufficient information
 
-        ERROR DATA: {text}
+        ERROR: {text}
 
-        Classify into fundamental category. Respond with category name only.
+        Category only:
 
   # Expert Definition: 7-Category Detailed
   bmw_errors_expert_7groups:
@@ -173,31 +168,30 @@ clustering_perspectives:
     
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"
+      model: "gpt-3.5-turbo-0125"
       temperature: 0.0
-      max_tokens: 40
+      max_tokens: 15
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 50
+      batch_size: 80
       unknown_category: "Unknown"
       prompt_template: |
-        You are a BMW manufacturing expert specializing in systematic failure analysis. Classify this error using expert-defined categories for automotive manufacturing.
+        Classify BMW error using expert 7-group categories:
 
-        EXPERT CATEGORIES (7-Group):
-        - "Design Errors": Physical parts breakage, wear, mechanical system failures
-        - "Material Errors": Electrical systems, wiring, electronic component failures
-        - "Equipment Failures": Manufacturing parameters outside specifications
-        - "Process Deviations": Raw material quality issues, specification deviations
-        - "Operator Errors": Operator mistakes, procedure violations, training gaps
+        - "Design Errors": Physical parts breakage, wear, mechanical failures
+        - "Material Errors": Electrical systems, wiring, electronic failures
+        - "Equipment Failures": Manufacturing parameters outside specs
+        - "Process Deviations": Raw material quality issues, spec deviations
+        - "Operator Errors": Human mistakes, procedure violations
         - "Inspection Errors": Tools, fixtures, jigs, setup equipment issues
         - "Environmental Errors": Control software, automation, programming problems
         - "Other": Clear errors not fitting expert categories
-        - "Unknown": Insufficient data for expert classification
+        - "Unknown": Insufficient data
 
-        ERROR DATA: {text}
+        ERROR: {text}
 
-        Apply expert classification. Respond with category name only.
+        Category only:
 
   # Expert Definition: 10-Category Comprehensive
   bmw_errors_expert_10groups:
@@ -220,34 +214,33 @@ clustering_perspectives:
     
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"
+      model: "gpt-3.5-turbo-0125"
       temperature: 0.0
-      max_tokens: 40
+      max_tokens: 20
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 50
+      batch_size: 60
       unknown_category: "Unknown"
       prompt_template: |
-        You are a BMW manufacturing diagnostics expert. Use comprehensive expert-defined categories for precise error classification.
+        Classify BMW error using expert 10-group categories:
 
-        EXPERT DIAGNOSTIC CATEGORIES (10-Group):
-        - "Dimensional Errors": Normal wear, material fatigue, mechanical deterioration
-        - "Drawing Interpretation Errors": Fluid power systems, pressure issues, actuator problems
-        - "Surface Defects": Wiring problems, electrical connectivity failures
-        - "Heat Treatment Errors": Measurement devices, sensor malfunctions, calibration issues
-        - "Welding Defects": Oil, grease, lubrication system problems
-        - "Material Specification Errors": Heating, cooling, thermal management failures
-        - "Fastening Defects": Material delivery, feeding mechanisms, supply problems
-        - "Supplier Nonconformance": Machine setup, parameter configuration errors
-        - "Painting Defects": Safety interlocks, emergency stops, protective systems
-        - "Machine Calibration Errors": External conditions affecting production
-        - "Other": Clear issues not covered by expert categories
-        - "Unknown": Insufficient data for expert diagnosis
+        - "Dimensional Errors": Size, tolerance, measurement issues
+        - "Drawing Interpretation Errors": Blueprint, specification misreading
+        - "Surface Defects": Finish, coating, surface quality issues
+        - "Heat Treatment Errors": Thermal processing problems
+        - "Welding Defects": Weld quality, joint problems
+        - "Material Specification Errors": Wrong material, grade issues
+        - "Fastening Defects": Bolt, screw, connection problems
+        - "Supplier Nonconformance": Vendor quality issues
+        - "Painting Defects": Paint quality, application problems
+        - "Machine Calibration Errors": Equipment setup, calibration issues
+        - "Other": Clear issues not covered
+        - "Unknown": Insufficient data
 
-        ERROR DATA: {text}
+        ERROR: {text}
 
-        Apply expert diagnostics. Respond with category name only.
+        Category only:
 
   # Expert Definition: 20-Category Granular
   bmw_errors_expert_20groups:
@@ -280,44 +273,37 @@ clustering_perspectives:
     
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"
+      model: "gpt-3.5-turbo-0125"
       temperature: 0.0
-      max_tokens: 50
+      max_tokens: 25
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
       batch_size: 40
       unknown_category: "Unknown"
       prompt_template: |
-        You are a BMW manufacturing failure analysis expert. Apply granular expert-defined categories for precise component-level classification.
+        Classify BMW error using granular 20-group expert categories:
 
-        GRANULAR EXPERT CATEGORIES (20-Group):
-        - "Assembly Defects": Bearings, rotational components, bearing assemblies
-        - "Tool Wear": Drive belts, chains, transmission elements
-        - "Material Defects": Electric motors, drive motors, motor thermal issues
-        - "Machine Setup Errors": Hydraulic valves, pneumatic valves, control valves
-        - "Contamination": Hydraulic pumps, coolant pumps, lubrication pumps
-        - "Welding Porosity": Electrical wiring, cable issues, electrical connections
-        - "Calibration Errors": PLCs, controllers, control units
-        - "Incomplete Weld Penetration": Position sensors, temperature sensors, measurement devices
-        - "Documentation Errors": Cylinders, motors, positioning devices
-        - "Weld Cracking": Coolant systems, heat exchangers, thermal management
-        - "Bolt Overtightening": Pneumatic systems, air supply, pressure regulation
-        - "Bolt Undertightening": Hydraulic oil, lubricants, fluid contamination
-        - "Missing Fasteners": Mechanical alignment, positioning, geometric issues
-        - "Paint Texture Defects": Mechanical vibration, resonance, dynamic problems
-        - "Paint Run Defects": Instrument calibration, measurement accuracy
-        - "Coating Adhesion Defects": Control software, program errors, logic problems
-        - "Surface Roughness Errors": Network communication, data transmission
-        - "Stamping Dimensional Errors": Electrical power, voltage problems, power distribution
-        - "Handling Damage": Raw material defects, component quality
-        - "Foreign Object Inclusion": Human mistakes, procedure violations
-        - "Other": Specific issues not covered by expert categories
-        - "Unknown": Insufficient data for expert analysis
+        Assembly: "Assembly Defects"
+        Tools: "Tool Wear"
+        Materials: "Material Defects"
+        Setup: "Machine Setup Errors"
+        Cleanliness: "Contamination"
+        Weld Quality: "Welding Porosity", "Incomplete Weld Penetration", "Weld Cracking"
+        Calibration: "Calibration Errors"
+        Documentation: "Documentation Errors"
+        Fasteners: "Bolt Overtightening", "Bolt Undertightening", "Missing Fasteners"
+        Paint: "Paint Texture Defects", "Paint Run Defects", "Coating Adhesion Defects"
+        Surface: "Surface Roughness Errors"
+        Forming: "Stamping Dimensional Errors"
+        Handling: "Handling Damage"
+        Foreign Objects: "Foreign Object Inclusion"
+        Other: "Other"
+        Unknown: "Unknown"
 
-        ERROR DATA: {text}
+        ERROR: {text}
 
-        Apply granular expert analysis. Respond with category name only.
+        Category only:
 
   # =============================================================================
   # GPT DATA ANALYSIS BASED CLASSIFICATIONS (4 perspectives)
@@ -336,36 +322,25 @@ clustering_perspectives:
     
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"
+      model: "gpt-3.5-turbo-0125"
       temperature: 0.0
-      max_tokens: 30
+      max_tokens: 20
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 50
+      batch_size: 100
       unknown_category: "Unknown"
       prompt_template: |
-        You are an expert in BMW automotive manufacturing and production systems. Analyze the following manufacturing error data to classify it into the most appropriate category based on GPT data analysis.
+        Classify BMW error using data analysis 2-group categories:
 
-        CONTEXT: This is real production data from BMW manufacturing facilities including error descriptions, technical object information, and damage patterns. The data contains both English translations and original German text from BMW's maintenance management system.
+        - "Mechanical and Operational Failures": Equipment malfunctions, mechanical breakdowns
+        - "Process and Quality Control Issues": Process deviations, quality failures
+        - "Other": Errors not fitting above
+        - "Unknown": Insufficient information
 
-        DATA FIELDS:
-        - CauseDescription_EN: Primary error description (English)
-        - CauseLongText_EN: Detailed error explanation (English)  
-        - TechnicalObjectDescription_EN: Equipment/component information (English)
-        - DamagePatternLongText_EN: How the failure manifested (English)
-        - ShortDescription: Brief error description (German)
-        - Description: Detailed error description (German)
+        ERROR: {text}
 
-        CATEGORIES (Based on GPT Data Analysis):
-        1. "Mechanical and Operational Failures" - Equipment malfunctions, mechanical breakdowns, operational disruptions
-        2. "Process and Quality Control Issues" - Process deviations, quality failures, material handling problems
-        3. "Other" - Errors that don't clearly fit the above categories
-        4. "Unknown" - Insufficient information to classify
-
-        ERROR DATA: {text}
-
-        Classify this BMW manufacturing error into exactly ONE category. Respond with only the category name.
+        Category only:
 
   # GPT Data Analysis: 7-Category Detailed Operational Focus
   bmw_errors_data_7groups:
@@ -385,39 +360,30 @@ clustering_perspectives:
     
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"
+      model: "gpt-3.5-turbo-0125"
       temperature: 0.0
-      max_tokens: 40
+      max_tokens: 20
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 50
+      batch_size: 80
       unknown_category: "Unknown"
       prompt_template: |
-        You are an expert in BMW automotive manufacturing, quality control, and FMEA analysis. Classify the following BMW manufacturing error data based on GPT data analysis findings.
+        Classify BMW error using data analysis 7-group categories:
 
-        CONTEXT: This data comes from BMW production facilities and includes comprehensive error information from their maintenance management system. You're analyzing real production issues to enable targeted corrective actions.
+        - "Equipment Malfunction": Machine/equipment failures
+        - "Process Errors": Manufacturing process deviations
+        - "Quality Assurance Failures": QC process failures
+        - "Material Issues": Raw material defects, supply problems
+        - "Software and Control System Errors": Automation, software issues
+        - "Maintenance and Inspection Failures": Preventive maintenance issues
+        - "Human Factors": Operator errors, training issues
+        - "Other": Doesn't fit above categories
+        - "Unknown": Insufficient data
 
-        DATA INTERPRETATION:
-        - CauseDescription_EN/CauseLongText_EN: What went wrong and why
-        - TechnicalObjectDescription_EN: Which equipment/component was involved
-        - DamagePatternLongText_EN: How the failure was observed/detected
-        - ShortDescription/Description (German): Original maintenance notes
+        ERROR: {text}
 
-        CATEGORIES (Based on GPT Data Analysis):
-        1. "Equipment Malfunction" - Machine/equipment failures, mechanical breakdowns
-        2. "Process Errors" - Manufacturing process deviations, incorrect execution
-        3. "Quality Assurance Failures" - QC process failures, inspection issues
-        4. "Material Issues" - Raw material defects, supply chain problems
-        5. "Software and Control System Errors" - Automation, software, IT issues
-        6. "Maintenance and Inspection Failures" - Preventive maintenance issues
-        7. "Human Factors" - Operator errors, training issues, personnel shortages
-        8. "Other" - Doesn't fit above categories clearly
-        9. "Unknown" - Insufficient data to classify
-
-        ERROR DATA: {text}
-
-        Classify this BMW manufacturing error. Respond with only the category name.
+        Category only:
 
   # GPT Data Analysis: 10-Category System-Focused Analysis
   bmw_errors_data_10groups:
@@ -440,42 +406,33 @@ clustering_perspectives:
     
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"
+      model: "gpt-3.5-turbo-0125"
       temperature: 0.0
-      max_tokens: 40
+      max_tokens: 20
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 50
+      batch_size: 60
       unknown_category: "Unknown"
       prompt_template: |
-        You are a BMW manufacturing systems expert specializing in production line diagnostics and failure analysis. Analyze this manufacturing error data for precise classification based on GPT data analysis.
+        Classify BMW error using data analysis 10-group categories:
 
-        CONTEXT: BMW production facility error data from maintenance management systems. This includes multi-lingual technical descriptions (English translations + German originals) covering the full spectrum of manufacturing operations.
+        - "Communication Failures": System communication, network issues
+        - "Mechanical Failures": Physical component breakdowns
+        - "Process Errors": Manufacturing process deviations
+        - "Alignment Issues": Component misalignment, positioning
+        - "Contamination Problems": Foreign objects, cleanliness
+        - "Supply Chain Issues": Material quality, delivery problems
+        - "Software and IT Failures": Control software malfunctions
+        - "Maintenance Oversights": Preventive maintenance gaps
+        - "Personnel-Related Issues": Human factors, staffing
+        - "Quality Assurance Failures": QC process breakdowns
+        - "Other": Clear errors not fitting above
+        - "Unknown": Insufficient information
 
-        DATA FIELDS EXPLANATION:
-        - CauseDescription_EN/CauseLongText_EN: Root cause analysis and detailed explanation
-        - TechnicalObjectDescription_EN: Specific equipment, station, or component involved
-        - DamagePatternLongText_EN: Observable symptoms and failure manifestation
-        - ShortDescription/Description: Original German maintenance documentation
+        ERROR: {text}
 
-        CATEGORIES FOR CLASSIFICATION (Based on GPT Data Analysis):
-        1. "Communication Failures" - System communication, network, signal issues
-        2. "Mechanical Failures" - Physical component breakdowns, wear, breakage
-        3. "Process Errors" - Manufacturing process deviations, setup errors
-        4. "Alignment Issues" - Component misalignment, positioning problems
-        5. "Contamination Problems" - Foreign objects, cleanliness issues
-        6. "Supply Chain Issues" - Material quality, delivery, supplier problems
-        7. "Software and IT Failures" - Control software, IT system malfunctions
-        8. "Maintenance Oversights" - Preventive maintenance gaps, service issues
-        9. "Personnel-Related Issues" - Human factors, staffing, training issues
-        10. "Quality Assurance Failures" - QC process breakdowns, inspection failures
-        11. "Other" - Clear errors not fitting above categories
-        12. "Unknown" - Insufficient information for classification
-
-        ERROR DATA: {text}
-
-        Provide the most accurate category name only.
+        Category only:
 
   # GPT Data Analysis: 20-Category Granular Failure Mode Analysis
   bmw_errors_data_20groups:
@@ -508,75 +465,65 @@ clustering_perspectives:
     
     llm_config:
       provider: "openai"
-      model: "gpt-4o-mini"
+      model: "gpt-3.5-turbo-0125"
       temperature: 0.0
-      max_tokens: 50
+      max_tokens: 30
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
       batch_size: 40
       unknown_category: "Unknown"
       prompt_template: |
-        You are a BMW manufacturing expert with deep knowledge of automotive production systems, FMEA methodology, and failure mode analysis. Perform detailed classification of this manufacturing error based on comprehensive GPT data analysis.
+        Classify BMW error using comprehensive data analysis 20-group categories:
 
-        CONTEXT: Comprehensive BMW production error data from maintenance management systems. This represents real manufacturing issues requiring precise categorization for targeted corrective actions and continuous improvement initiatives.
+        Communication: "Communication Errors"
+        Mechanical: "Mechanical Failures"
+        Process: "Process Errors"
+        Quality: "Quality Assurance Failures"
+        Electrical: "Electrical Issues"
+        Materials: "Material Deficiencies"
+        Alignment: "Alignment Issues"
+        Maintenance: "Cleaning and Maintenance Failures"
+        Software: "Software Malfunctions"
+        Contamination: "Foreign Object Contamination"
+        Personnel: "Personnel-Related Issues"
+        Testing: "Inspection and Testing Failures"
+        Operations: "Operational Delays"
+        Safety: "Safety and Compliance Issues"
+        Environment: "Environmental Factors"
+        Tooling: "Tooling and Equipment Issues"
+        Documentation: "Documentation and Record-Keeping Errors"
+        Calibration: "Calibration and Adjustment Errors"
+        Supply: "Supply Chain Disruptions"
+        Unclear: "Unclear or Undefined Issues"
+        Other: "Other"
+        Unknown: "Unknown"
 
-        TECHNICAL DATA STRUCTURE:
-        - CauseDescription_EN: Primary failure analysis and root cause identification
-        - CauseLongText_EN: Comprehensive failure details and context
-        - TechnicalObjectDescription_EN: Equipment identification, station, component specifics
-        - DamagePatternLongText_EN: Failure manifestation, symptoms, detection method
-        - ShortDescription (German): Concise original maintenance entry
-        - Description (German): Full original technical documentation
+        ERROR: {text}
 
-        DETAILED CLASSIFICATION CATEGORIES (Based on GPT Data Analysis):
-        1. "Communication Errors" - Inter-system communication, network, protocol failures
-        2. "Mechanical Failures" - Physical breakdowns, wear, structural failures
-        3. "Process Errors" - Manufacturing sequence, parameter, execution errors
-        4. "Quality Assurance Failures" - QC process, standard compliance failures
-        5. "Electrical Issues" - Wiring, circuits, electrical component failures
-        6. "Material Deficiencies" - Raw material quality, specification deviations
-        7. "Alignment Issues" - Positioning, calibration, geometric alignment problems
-        8. "Cleaning and Maintenance Failures" - Preventive maintenance, cleanliness issues
-        9. "Software Malfunctions" - Control software, programming errors
-        10. "Foreign Object Contamination" - Debris, contamination, cleanliness issues
-        11. "Personnel-Related Issues" - Human factors, training, staffing problems
-        12. "Inspection and Testing Failures" - Test protocol, measurement failures
-        13. "Operational Delays" - Timing, scheduling, workflow interruptions
-        14. "Safety and Compliance Issues" - Safety protocol, regulatory violations
-        15. "Environmental Factors" - Temperature, humidity, external conditions
-        16. "Tooling and Equipment Issues" - Fixtures, tools, equipment-specific problems
-        17. "Documentation and Record-Keeping Errors" - Data management, recording issues
-        18. "Calibration and Adjustment Errors" - Measurement, setup, tuning problems
-        19. "Supply Chain Disruptions" - Supplier, logistics, material flow issues
-        20. "Unclear or Undefined Issues" - Ambiguous, complex, multi-factor problems
-        21. "Other" - Clear issues not covered by specific categories
-        22. "Unknown" - Insufficient data for accurate classification
-
-        ERROR DATA: {text}
-
-        Analyze comprehensively and provide the single most accurate category name.
+        Category only:
 
 # =============================================================================
-# GLOBAL CONFIGURATION (Optimized for 6 CPU, 50GB RAM)
+# GLOBAL CONFIGURATION (Optimized for 12 CPUs, 128GB RAM)
 # =============================================================================
 
-# AI Classification global settings (optimized for 10 perspectives)
+# AI Classification global settings (optimized for high-performance system)
 ai_classification:
   cost_management:
-    max_cost_per_run: 50.0  # Increased for 10 perspectives
+    max_cost_per_run: 75.0  # Increased for 10 perspectives with faster processing
   
   caching:
     enabled: true
-    cache_directory: "ai_cache_bmw_complete"
+    cache_directory: "ai_cache_bmw_highperf"
     preload_cache: true
+    cache_duration_days: 365
   
   rate_limiting:
-    requests_per_minute: 500
-    concurrent_requests: 6  # Match CPU count
+    requests_per_minute: 1000  # Increased for faster model
+    concurrent_requests: 12    # Match CPU count
   
   parallel_processing:
-    max_workers: 6  # Match CPU count
+    max_workers: 12  # Match CPU count
 
 # Feature extraction (not used for AI classification but required)
 feature_extraction:
@@ -600,14 +547,14 @@ evaluation:
   output_format:
     - 'json'
 
-# Spark settings optimized for 6 CPU, 50GB RAM
+# Spark settings optimized for 12 CPUs, 128GB RAM
 spark:
- executor_memory: "40g"    # Use 80% of available RAM
-  driver_memory: "8g"       # Reserve some RAM for system
-  executor_cores: 2         # 2 cores per executor
-  default_parallelism: 6    # Match CPU count
+  executor_memory: "100g"   # Use ~80% of available RAM
+  driver_memory: "20g"      # Reserve 20GB for driver
+  executor_cores: 3         # 3 cores per executor (4 executors total)
+  default_parallelism: 12   # Match CPU count
 
-# Disable checkpointing to save disk space
+# Disable checkpointing to save disk space and improve speed
 checkpoint:
   enabled: false
 
@@ -615,10 +562,17 @@ checkpoint:
 logging:
   level: "INFO"
   console_output: true
-  log_file: "logs/bmw_complete_classification.log"
+  log_file: "logs/bmw_highperf_classification.log"
 
 # Options
 options:
   seed: 42
   save_intermediate: false
   clean_intermediate_on_success: true
+
+# Performance optimizations
+performance:
+  batch_size: 200      # Large batches for high-performance system
+  parallel_jobs: 12    # Match CPU count
+  cache_embeddings: true
+  cache_directory: "cache_highperf"
