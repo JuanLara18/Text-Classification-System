@@ -493,108 +493,234 @@ Answer with the category name ONLY."""
         }
 
 
+import os
+import json
+import hashlib
+import threading
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+
+
 class ClassificationCache:
-    """Enhanced caching system for AI classification results."""
+    """Enhanced caching system for AI classification results - Optimized Version."""
     
-    def __init__(self, cache_dir: str, duration_days: int = 365):  # Longer default cache
+    def __init__(self, cache_dir: str, duration_days: int = 365):
         self.cache_dir = cache_dir
         self.duration_days = duration_days
-        self.cache_file = os.path.join(cache_dir, "classification_cache.pkl")
-        self._cache_lock = threading.Lock() 
+        self.cache_file = os.path.join(cache_dir, "classification_cache.json")
         
+        # Create cache directory if it doesn't exist
         os.makedirs(cache_dir, exist_ok=True)
+        
+        # Memory cache with size limit to prevent memory issues
+        self.memory_cache = {}
+        self.max_memory_cache = 10000  # Limit to 10K entries in memory
+        
+        # Thread safety lock
+        self._cache_lock = threading.Lock()
+        
+        # Load disk cache safely
         self.cache = self._load_cache()
-        self.memory_cache = {}  # Additional in-memory cache for frequently accessed items
+        
+        # Initialize logging
+        self.logger = logging.getLogger(__name__)
+        
+        self.logger.info(f"ClassificationCache initialized: {len(self.cache)} entries loaded from disk")
     
     def _load_cache(self) -> Dict:
-        """Load existing cache from disk."""
-        if os.path.exists(self.cache_file):
-            try:
-                with open(self.cache_file, 'rb') as f:
-                    cache_data = pickle.load(f)
-                
-                # Clean expired entries
-                cutoff_date = datetime.now() - timedelta(days=self.duration_days)
-                cleaned_cache = {
-                    k: v for k, v in cache_data.items()
-                    if datetime.fromisoformat(v.get('timestamp', '1970-01-01')) > cutoff_date
-                }
-                
-                return cleaned_cache
-            except Exception:
+        """Load existing cache from disk using JSON for better performance."""
+        if not os.path.exists(self.cache_file):
+            return {}
+        
+        try:
+            # Check file size before loading to prevent memory issues
+            file_size = os.path.getsize(self.cache_file)
+            max_size = 100 * 1024 * 1024  # 100MB limit
+            
+            if file_size > max_size:
+                self.logger.warning(f"Cache file too large ({file_size/1024/1024:.1f}MB), starting with empty cache")
                 return {}
-        return {}
+            
+            # Load cache with timeout protection
+            with open(self.cache_file, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+            
+            # Clean expired entries during load
+            cutoff_date = datetime.now() - timedelta(days=self.duration_days)
+            cleaned_cache = {}
+            
+            for key, value in cache_data.items():
+                if isinstance(value, dict) and 'timestamp' in value:
+                    try:
+                        entry_date = datetime.fromisoformat(value['timestamp'])
+                        if entry_date > cutoff_date:
+                            cleaned_cache[key] = value
+                    except (ValueError, TypeError):
+                        continue  # Skip invalid entries
+            
+            self.logger.info(f"Loaded {len(cleaned_cache)} valid cache entries from disk")
+            return cleaned_cache
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to load cache: {e}, starting with empty cache")
+            return {}
     
     def _save_cache(self):
-        """Save cache to disk with error handling and cleanup."""
+        """Save cache to disk with error handling and backup."""
+        if not self.cache:
+            return
+        
         try:
             # Create backup before saving
             backup_file = f"{self.cache_file}.backup"
             if os.path.exists(self.cache_file):
-                import shutil
-                shutil.copy2(self.cache_file, backup_file)
+                try:
+                    import shutil
+                    shutil.copy2(self.cache_file, backup_file)
+                except Exception:
+                    pass  # Ignore backup errors
             
-            # Create a copy of the cache to avoid concurrent modification issues
+            # Create a copy of the cache to avoid concurrent modification
             with self._cache_lock:
                 cache_copy = self.cache.copy()
             
-            with open(self.cache_file, 'wb') as f:
-                pickle.dump(cache_copy, f)
-                
+            # Save using JSON for better performance and compatibility
+            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_copy, f, ensure_ascii=False, separators=(',', ':'))
+            
+            self.logger.debug(f"Cache saved to disk: {len(cache_copy)} entries")
+            
         except Exception as e:
-            logging.warning(f"Failed to save classification cache: {e}")
+            self.logger.warning(f"Failed to save classification cache: {e}")
     
     def _generate_key(self, text: str, categories: List[str], model: str, prompt: str) -> str:
         """Generate a unique cache key for the classification request."""
-        # Normalize text for better cache hits
-        normalized_text = text.strip().lower()
-        content = f"{normalized_text}|{sorted(categories)}|{model}"
-        return hashlib.md5(content.encode()).hexdigest()
+        if not text or not categories:
+            return ""
+        
+        # Normalize text for better cache hits but preserve important differences
+        normalized_text = text.strip()[:500]  # Limit text length for key generation
+        
+        # Create content string with normalized inputs
+        content = f"{normalized_text}|{sorted(categories[:10])}|{model}"  # Limit categories to first 10
+        
+        # Generate MD5 hash for consistent key length
+        return hashlib.md5(content.encode('utf-8')).hexdigest()
     
     def get(self, text: str, categories: List[str], model: str, prompt: str) -> Optional[str]:
         """Get cached classification result with memory cache check."""
-        key = self._generate_key(text, categories, model, prompt)
+        if not text or not text.strip():
+            return None
         
-        # Check memory cache first
+        key = self._generate_key(text, categories, model, prompt)
+        if not key:
+            return None
+        
+        # Check memory cache first (fastest)
         if key in self.memory_cache:
             return self.memory_cache[key]
         
         # Check disk cache
-        entry = self.cache.get(key)
-        if entry:
-            # Check if entry is still valid
-            entry_date = datetime.fromisoformat(entry['timestamp'])
-            if datetime.now() - entry_date < timedelta(days=self.duration_days):
-                # Store in memory cache for faster future access
-                self.memory_cache[key] = entry['classification']
-                return entry['classification']
+        with self._cache_lock:
+            entry = self.cache.get(key)
+            
+        if entry and isinstance(entry, dict) and 'classification' in entry:
+            try:
+                # Check if entry is still valid
+                entry_date = datetime.fromisoformat(entry['timestamp'])
+                if datetime.now() - entry_date < timedelta(days=self.duration_days):
+                    # Store in memory cache for faster future access (with size limit)
+                    if len(self.memory_cache) < self.max_memory_cache:
+                        self.memory_cache[key] = entry['classification']
+                    return entry['classification']
+            except (ValueError, TypeError, KeyError):
+                pass  # Skip invalid entries
         
         return None
     
     def set(self, text: str, categories: List[str], model: str, prompt: str, classification: str):
         """Cache a classification result in both memory and disk cache."""
-        key = self._generate_key(text, categories, model, prompt)
+        if not text or not text.strip() or not classification:
+            return
         
+        key = self._generate_key(text, categories, model, prompt)
+        if not key:
+            return
+        
+        # Store in memory cache (with size limit)
+        if len(self.memory_cache) < self.max_memory_cache:
+            self.memory_cache[key] = classification
+        
+        # Store in disk cache
         with self._cache_lock:
-            # Store in disk cache
             self.cache[key] = {
                 'classification': classification,
                 'timestamp': datetime.now().isoformat()
             }
             
-            # Store in memory cache
-            self.memory_cache[key] = classification
-            
-            # Save to disk periodically
-            if len(self.cache) % 50 == 0:
+            # Save to disk periodically to avoid frequent I/O
+            if len(self.cache) % 100 == 0:  # Save every 100 entries instead of 50
                 self._save_cache()
     
     def save(self):
         """Explicitly save cache to disk."""
+        self._save_cache()
+    
+    def clear_memory_cache(self):
+        """Clear memory cache to free up RAM."""
+        self.memory_cache.clear()
+        self.logger.info("Memory cache cleared")
+    
+    def get_stats(self) -> Dict:
+        """Get cache statistics for monitoring."""
         with self._cache_lock:
+            disk_size = len(self.cache)
+        
+        memory_size = len(self.memory_cache)
+        
+        # Calculate file size if exists
+        file_size = 0
+        if os.path.exists(self.cache_file):
+            try:
+                file_size = os.path.getsize(self.cache_file)
+            except Exception:
+                pass
+        
+        return {
+            'disk_entries': disk_size,
+            'memory_entries': memory_size,
+            'file_size_mb': file_size / (1024 * 1024),
+            'cache_file': self.cache_file,
+            'max_memory_entries': self.max_memory_cache
+        }
+    
+    def cleanup_expired(self):
+        """Manually clean up expired entries."""
+        cutoff_date = datetime.now() - timedelta(days=self.duration_days)
+        
+        with self._cache_lock:
+            original_size = len(self.cache)
+            cleaned_cache = {}
+            
+            for key, value in self.cache.items():
+                if isinstance(value, dict) and 'timestamp' in value:
+                    try:
+                        entry_date = datetime.fromisoformat(value['timestamp'])
+                        if entry_date > cutoff_date:
+                            cleaned_cache[key] = value
+                    except (ValueError, TypeError):
+                        continue
+            
+            self.cache = cleaned_cache
+            removed_count = original_size - len(cleaned_cache)
+        
+        if removed_count > 0:
+            self.logger.info(f"Cleaned up {removed_count} expired cache entries")
             self._save_cache()
-
-
+        
+        return removed_count
+    
 class OptimizedLLMClassificationManager:
     """Enhanced LLM Classification Manager with unique value processing."""
     
