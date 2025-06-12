@@ -15,6 +15,7 @@ import pandas as pd
 from collections import defaultdict, Counter
 import openai
 import tiktoken
+import threading
 
 import concurrent.futures
 import threading
@@ -499,6 +500,7 @@ class ClassificationCache:
         self.cache_dir = cache_dir
         self.duration_days = duration_days
         self.cache_file = os.path.join(cache_dir, "classification_cache.pkl")
+        self._cache_lock = threading.Lock() 
         
         os.makedirs(cache_dir, exist_ok=True)
         self.cache = self._load_cache()
@@ -524,7 +526,7 @@ class ClassificationCache:
         return {}
     
     def _save_cache(self):
-        """Save cache to disk with error handling."""
+        """Save cache to disk with error handling and cleanup."""
         try:
             # Create backup before saving
             backup_file = f"{self.cache_file}.backup"
@@ -532,8 +534,13 @@ class ClassificationCache:
                 import shutil
                 shutil.copy2(self.cache_file, backup_file)
             
+            # Create a copy of the cache to avoid concurrent modification issues
+            with self._cache_lock:
+                cache_copy = self.cache.copy()
+            
             with open(self.cache_file, 'wb') as f:
-                pickle.dump(self.cache, f)
+                pickle.dump(cache_copy, f)
+                
         except Exception as e:
             logging.warning(f"Failed to save classification cache: {e}")
     
@@ -568,22 +575,24 @@ class ClassificationCache:
         """Cache a classification result in both memory and disk cache."""
         key = self._generate_key(text, categories, model, prompt)
         
-        # Store in disk cache
-        self.cache[key] = {
-            'classification': classification,
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        # Store in memory cache
-        self.memory_cache[key] = classification
-        
-        # Save to disk periodically
-        if len(self.cache) % 50 == 0:  # More frequent saves
-            self._save_cache()
+        with self._cache_lock:
+            # Store in disk cache
+            self.cache[key] = {
+                'classification': classification,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Store in memory cache
+            self.memory_cache[key] = classification
+            
+            # Save to disk periodically
+            if len(self.cache) % 50 == 0:
+                self._save_cache()
     
     def save(self):
         """Explicitly save cache to disk."""
-        self._save_cache()
+        with self._cache_lock:
+            self._save_cache()
 
 
 class OptimizedLLMClassificationManager:
