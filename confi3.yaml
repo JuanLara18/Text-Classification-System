@@ -1,26 +1,23 @@
-# BMW Manufacturing Error Classification Configuration - OPTIMIZED FOR HIGH PERFORMANCE
-# 10 Total Perspectives: 2 Industry Standard + 4 Expert Defined + 4 GPT Data Analysis
-# Hardware: 12 CPUs, 128GB RAM - Optimized for speed and throughput
+# BMW Manufacturing Error Classification Configuration - OPTIMIZED 8 GROUPS
+# 8 Active Perspectives: 4 Expert Defined + 4 GPT Data Analysis (2 commented out)
+# Hardware: 12 CPUs, 128GB RAM - Optimized for speed and reduced prompt complexity
+# Reduced text columns for faster processing and shorter prompts
 
 input_file: "input/Maintenance_Classified.dta"
-output_file: "output/BMW_Manufacturing_Errors_ALL_Classifications.dta"
-results_dir: "output/bmw_complete_classification_results"
+output_file: "output/BMW_Manufacturing_Errors_8_Classifications.dta"
+results_dir: "output/bmw_8_groups_classification_results"
 
-# All 6 BMW manufacturing text columns (4 English + 2 German)
+# Reduced to 2 main English text columns for faster processing and shorter prompts
 text_columns:
   - CauseDescription_EN
-  - CauseLongText_EN  
-  - TechnicalObjectDescription_EN
-  - DamagePatternLongText_EN
-  - ShortDescription      # German
-  - Description           # German
+  - CauseLongText_EN
 
-# Testing configuration for faster runs
+# Testing configuration with small sample for verification
 testing:
   enabled: true
-  sample_size: 3000  # Increased for high-performance system
+  sample_size: 500  # Small sample for quick testing
   sample_method: "random"
-  output_file: "output/BMW_test_ALL_classifications.dta"
+  output_file: "output/BMW_test_8_classifications.dta"
 
 # Minimal preprocessing to preserve technical terminology
 preprocessing:
@@ -32,85 +29,59 @@ preprocessing:
   max_length: 2000
 
 # =============================================================================
-# 10 TOTAL PERSPECTIVES: All Classification Approaches
+# 8 ACTIVE PERSPECTIVES: Expert Defined + GPT Data Analysis
 # =============================================================================
 clustering_perspectives:
 
   # =============================================================================
-  # INDUSTRY STANDARD CLASSIFICATIONS (2 perspectives)
+  # COMMENTED OUT - INDUSTRY STANDARD CLASSIFICATIONS (Not good groups)
   # =============================================================================
 
-  # Industry Standard: Severity-Based Classification
-  bmw_errors_severity:
-    type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
-    target_categories:
-      - "Critical Defects"
-      - "Major Defects"
-      - "Minor Defects"
-      - "Other"
-      - "Unknown"
-    output_column: "bmw_error_severity"
-    
-    llm_config:
-      provider: "openai"
-      model: "gpt-3.5-turbo-0125"  # Faster model for high throughput
-      temperature: 0.0
-      max_tokens: 15  # Reduced for speed
-      api_key_env: "OPENAI_API_KEY"
-    
-    classification_config:
-      batch_size: 100  # Increased batch size for high-performance system
-      unknown_category: "Unknown"
-      prompt_template: |
-        Classify this BMW manufacturing error by severity level following automotive industry standards.
+  # # Industry Standard: Severity-Based Classification
+  # bmw_errors_severity:
+  #   type: "openai_classification"
+  #   columns: ["CauseDescription_EN", "CauseLongText_EN"]
+  #   target_categories:
+  #     - "Critical Defects"
+  #     - "Major Defects"
+  #     - "Minor Defects"
+  #     - "Other"
+  #     - "Unknown"
+  #   output_column: "bmw_error_severity"
+  #   
+  #   llm_config:
+  #     provider: "openai"
+  #     model: "gpt-3.5-turbo-0125"
+  #     temperature: 0.0
+  #     max_tokens: 15
+  #     api_key_env: "OPENAI_API_KEY"
+  #   
+  #   classification_config:
+  #     batch_size: 100
+  #     unknown_category: "Unknown"
 
-        SEVERITY LEVELS:
-        - "Critical Defects": Safety hazards, unusable products, potential recalls
-        - "Major Defects": Significant spec deviations, affect function/performance
-        - "Minor Defects": Minor spec non-compliance, minimal impact
-        - "Other": Clear errors not fitting severity categories
-        - "Unknown": Insufficient information
-
-        ERROR: {text}
-
-        Category name only:
-
-  # Industry Standard: Origin-Based Classification  
-  bmw_errors_origin:
-    type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
-    target_categories:
-      - "Manufacturing Defects"
-      - "Design Flaws"
-      - "Mislabeling"
-      - "Other"
-      - "Unknown"
-    output_column: "bmw_error_origin"
-    
-    llm_config:
-      provider: "openai"
-      model: "gpt-3.5-turbo-0125"
-      temperature: 0.0
-      max_tokens: 15
-      api_key_env: "OPENAI_API_KEY"
-    
-    classification_config:
-      batch_size: 100
-      unknown_category: "Unknown"
-      prompt_template: |
-        Classify this BMW error by origin following automotive standards.
-
-        ORIGINS:
-        - "Manufacturing Defects": Production process errors, assembly issues
-        - "Design Flaws": Engineering design problems, specification issues
-        - "Mislabeling": Documentation errors, incorrect labeling
-        - "Other": Clear origin not fitting above
-        - "Unknown": Insufficient data
-
-        ERROR: {text}
-
-        Category name only:
+  # # Industry Standard: Origin-Based Classification  
+  # bmw_errors_origin:
+  #   type: "openai_classification"
+  #   columns: ["CauseDescription_EN", "CauseLongText_EN"]
+  #   target_categories:
+  #     - "Manufacturing Defects"
+  #     - "Design Flaws"
+  #     - "Mislabeling"
+  #     - "Other"
+  #     - "Unknown"
+  #   output_column: "bmw_error_origin"
+  #   
+  #   llm_config:
+  #     provider: "openai"
+  #     model: "gpt-3.5-turbo-0125"
+  #     temperature: 0.0
+  #     max_tokens: 15
+  #     api_key_env: "OPENAI_API_KEY"
+  #   
+  #   classification_config:
+  #     batch_size: 100
+  #     unknown_category: "Unknown"
 
   # =============================================================================
   # EXPERT DEFINED CLASSIFICATIONS (4 perspectives)
@@ -119,7 +90,7 @@ clustering_perspectives:
   # Expert Definition: 2-Category High-Level
   bmw_errors_expert_2groups:
     type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+    columns: ["CauseDescription_EN", "CauseLongText_EN"]
     target_categories:
       - "Design Errors"
       - "Process Errors"
@@ -153,7 +124,7 @@ clustering_perspectives:
   # Expert Definition: 7-Category Detailed
   bmw_errors_expert_7groups:
     type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+    columns: ["CauseDescription_EN", "CauseLongText_EN"]
     target_categories:
       - "Design Errors"
       - "Material Errors"
@@ -196,7 +167,7 @@ clustering_perspectives:
   # Expert Definition: 10-Category Comprehensive
   bmw_errors_expert_10groups:
     type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+    columns: ["CauseDescription_EN", "CauseLongText_EN"]
     target_categories:
       - "Dimensional Errors"
       - "Drawing Interpretation Errors"
@@ -245,7 +216,7 @@ clustering_perspectives:
   # Expert Definition: 20-Category Granular
   bmw_errors_expert_20groups:
     type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+    columns: ["CauseDescription_EN", "CauseLongText_EN"]
     target_categories:
       - "Assembly Defects"
       - "Tool Wear"
@@ -312,7 +283,7 @@ clustering_perspectives:
   # GPT Data Analysis: 2-Category High-Level Grouping
   bmw_errors_data_2groups:
     type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+    columns: ["CauseDescription_EN", "CauseLongText_EN"]
     target_categories:
       - "Mechanical and Operational Failures"
       - "Process and Quality Control Issues"
@@ -345,7 +316,7 @@ clustering_perspectives:
   # GPT Data Analysis: 7-Category Detailed Operational Focus
   bmw_errors_data_7groups:
     type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+    columns: ["CauseDescription_EN", "CauseLongText_EN"]
     target_categories:
       - "Equipment Malfunction"
       - "Process Errors"
@@ -388,7 +359,7 @@ clustering_perspectives:
   # GPT Data Analysis: 10-Category System-Focused Analysis
   bmw_errors_data_10groups:
     type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+    columns: ["CauseDescription_EN", "CauseLongText_EN"]
     target_categories:
       - "Communication Failures"
       - "Mechanical Failures"
@@ -437,7 +408,7 @@ clustering_perspectives:
   # GPT Data Analysis: 20-Category Granular Failure Mode Analysis
   bmw_errors_data_20groups:
     type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+    columns: ["CauseDescription_EN", "CauseLongText_EN"]
     target_categories:
       - "Communication Errors"
       - "Mechanical Failures"
@@ -510,16 +481,16 @@ clustering_perspectives:
 # AI Classification global settings (optimized for high-performance system)
 ai_classification:
   cost_management:
-    max_cost_per_run: 75.0  # Increased for 10 perspectives with faster processing
+    max_cost_per_run: 60.0  # Reduced for 8 perspectives and shorter prompts
   
   caching:
     enabled: true
-    cache_directory: "ai_cache_bmw_highperf"
+    cache_directory: "ai_cache_bmw_8groups"
     preload_cache: true
     cache_duration_days: 365
   
   rate_limiting:
-    requests_per_minute: 1000  # Increased for faster model
+    requests_per_minute: 1000  # High rate for faster model
     concurrent_requests: 12    # Match CPU count
   
   parallel_processing:
@@ -541,6 +512,7 @@ cluster_labeling:
 cluster_analysis:
   enabled: false
 
+# Minimal evaluation to save time
 evaluation:
   metrics: []
   visualizations: []
@@ -549,8 +521,8 @@ evaluation:
 
 # Spark settings optimized for 12 CPUs, 128GB RAM
 spark:
-  executor_memory: "110g"   # Use ~80% of available RAM
-  driver_memory: "20g"      # Reserve 20GB for driver
+  executor_memory: "140g"   # Use ~80% of available RAM
+  driver_memory: "25g"      # Reserve 20GB for driver
   executor_cores: 4         # 3 cores per executor (4 executors total)
   default_parallelism: 12   # Match CPU count
 
@@ -562,7 +534,7 @@ checkpoint:
 logging:
   level: "INFO"
   console_output: true
-  log_file: "logs/bmw_highperf_classification.log"
+  log_file: "logs/bmw_8groups_classification.log"
 
 # Options
 options:
@@ -575,4 +547,4 @@ performance:
   batch_size: 200      # Large batches for high-performance system
   parallel_jobs: 12    # Match CPU count
   cache_embeddings: true
-  cache_directory: "cache_highperf"
+  cache_directory: "cache_8groups"
