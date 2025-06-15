@@ -1,5 +1,9 @@
 import re
 from collections import defaultdict
+from typing import Dict, List, Tuple
+
+import pandas as pd
+
 
 class UniqueValueProcessor:
     """Fixed processor for unique value classification and mapping."""
