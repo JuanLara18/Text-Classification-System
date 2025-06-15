@@ -1635,54 +1635,145 @@ class EnhancedClassifierManager:
     
     def classify_perspective(self, dataframe, perspective_name, perspective_config):
         """
-        Enhanced perspective classification with optimization detection.
-        Automatically chooses between clustering and AI classification with optimizations.
+        Enhanced perspective classification with robust type detection and error handling.
+        Properly separates AI classification from traditional clustering workflows.
         """
-        self.logger.info(f"Applying enhanced {perspective_name} perspective")
+        self.logger.info(f"Applying enhanced perspective: {perspective_name}")
         
         try:
-            # Check perspective type
-            perspective_type = perspective_config.get('type', 'clustering')
+            # Validate inputs first
+            if dataframe is None:
+                raise ValueError("Input dataframe is None")
             
+            if not perspective_config:
+                raise ValueError("Perspective configuration is empty")
+            
+            # Enhanced perspective type detection with validation
+            perspective_type = perspective_config.get('type', 'clustering').lower().strip()
+            
+            # Validate required fields based on type
             if perspective_type == 'openai_classification':
-                # Use optimized AI classification
+                required_fields = ['columns', 'target_categories', 'output_column']
+                missing_fields = [field for field in required_fields if not perspective_config.get(field)]
+                if missing_fields:
+                    raise ValueError(f"AI classification perspective missing required fields: {missing_fields}")
+                
+                # Validate target categories
+                target_categories = perspective_config.get('target_categories', [])
+                if len(target_categories) < 2:
+                    raise ValueError("AI classification requires at least 2 target categories")
+                
+                self.logger.info(f"Processing AI classification perspective with {len(target_categories)} categories")
                 return self._apply_optimized_ai_classification_perspective(dataframe, perspective_name, perspective_config)
+                
             elif perspective_type == 'clustering':
-                # Use traditional clustering
+                required_fields = ['columns', 'algorithm', 'output_column']
+                missing_fields = [field for field in required_fields if not perspective_config.get(field)]
+                if missing_fields:
+                    raise ValueError(f"Clustering perspective missing required fields: {missing_fields}")
+                
+                algorithm = perspective_config.get('algorithm', '').lower()
+                if algorithm not in ['kmeans', 'hdbscan', 'agglomerative']:
+                    raise ValueError(f"Unsupported clustering algorithm: {algorithm}")
+                
+                self.logger.info(f"Processing clustering perspective with {algorithm} algorithm")
                 return self._apply_clustering_perspective(dataframe, perspective_name, perspective_config)
+                
             else:
-                raise ValueError(f"Unknown perspective type: {perspective_type}")
+                raise ValueError(f"Unknown perspective type: {perspective_type}. Supported types: 'openai_classification', 'clustering'")
                 
         except Exception as e:
             self.logger.error(f"Error applying perspective {perspective_name}: {str(e)}")
-            raise RuntimeError(f"Failed to apply perspective {perspective_name}: {str(e)}")
+            # Instead of re-raising, return None to allow other perspectives to continue
+            return None, None, None
     
     def _apply_optimized_ai_classification_perspective(self, dataframe, perspective_name, perspective_config):
-        """Apply optimized AI classification perspective."""
+        """
+        Enhanced AI classification with proper DataFrame handling and validation.
+        """
         self.logger.info(f"Applying OPTIMIZED AI classification perspective: {perspective_name}")
         
-        # Check if we're working with a PySpark DataFrame
-        is_spark_df = isinstance(dataframe, SparkDataFrame)
-        
-        # Convert to pandas if needed
-        if is_spark_df:
-            self.logger.info("Converting Spark DataFrame to pandas for optimized AI classification")
-            pandas_df = dataframe.toPandas()
-        else:
-            pandas_df = dataframe.copy()
-        
-        # Apply optimized LLM classification
-        result_df, metadata = self.llm_manager.classify_perspective(
-            pandas_df, perspective_name, perspective_config
-        )
-        
-        # Get output column and classifications
-        output_column = perspective_config.get('output_column', f"{perspective_name}_classification")
-        classifications = result_df[output_column].values
-        
-        self.logger.info(f"Optimized AI classification perspective {perspective_name} completed")
-        
-        return result_df, metadata, classifications
+        try:
+            # Validate LLM manager initialization
+            if not hasattr(self, 'llm_manager') or self.llm_manager is None:
+                self.logger.warning("LLM manager not initialized, creating new instance")
+                from .ai_classifier import OptimizedLLMClassificationManager
+                self.llm_manager = OptimizedLLMClassificationManager(self.config, self.logger)
+            
+            # Enhanced DataFrame handling
+            is_spark_df = isinstance(dataframe, SparkDataFrame)
+            
+            if is_spark_df:
+                self.logger.info("Converting Spark DataFrame to pandas for AI classification")
+                try:
+                    pandas_df = dataframe.toPandas()
+                    if pandas_df.empty:
+                        raise ValueError("Converted DataFrame is empty")
+                except Exception as conversion_error:
+                    raise RuntimeError(f"Failed to convert Spark DataFrame: {conversion_error}")
+            else:
+                pandas_df = dataframe.copy()
+                if pandas_df.empty:
+                    raise ValueError("Input pandas DataFrame is empty")
+            
+            # Validate columns exist
+            columns = perspective_config.get('columns', [])
+            missing_columns = [col for col in columns if col not in pandas_df.columns]
+            if missing_columns:
+                # Try preprocessed columns
+                preprocessed_available = []
+                for col in missing_columns:
+                    prep_col = f"{col}_preprocessed"
+                    if prep_col in pandas_df.columns:
+                        preprocessed_available.append(prep_col)
+                
+                if len(preprocessed_available) < len(missing_columns):
+                    still_missing = [col for col in missing_columns if f"{col}_preprocessed" not in pandas_df.columns]
+                    raise ValueError(f"Required columns not found: {still_missing}")
+            
+            # Apply optimized LLM classification with enhanced error handling
+            try:
+                result_df, metadata = self.llm_manager.classify_perspective(
+                    pandas_df, perspective_name, perspective_config
+                )
+                
+                if result_df is None:
+                    raise RuntimeError("LLM classification returned None result")
+                
+                # Validate results
+                output_column = perspective_config.get('output_column', f"{perspective_name}_classification")
+                if output_column not in result_df.columns:
+                    raise RuntimeError(f"Expected output column {output_column} not found in results")
+                
+                # Get classifications for return
+                classifications = result_df[output_column].values
+                
+                # Validate classification results
+                non_null_count = pd.Series(classifications).notna().sum()
+                if non_null_count == 0:
+                    self.logger.warning("All classifications are null - check input data quality")
+                else:
+                    self.logger.info(f"Successfully classified {non_null_count}/{len(classifications)} records")
+                
+                # Enhanced metadata with validation
+                enhanced_metadata = metadata.copy() if metadata else {}
+                enhanced_metadata.update({
+                    'perspective_type': 'openai_classification',
+                    'total_records': len(classifications),
+                    'valid_classifications': non_null_count,
+                    'classification_rate': non_null_count / len(classifications) if len(classifications) > 0 else 0
+                })
+                
+                self.logger.info(f"✅ AI classification completed for {perspective_name}")
+                return result_df, enhanced_metadata, classifications
+                
+            except Exception as llm_error:
+                self.logger.error(f"LLM classification failed: {str(llm_error)}")
+                raise RuntimeError(f"AI classification failed: {str(llm_error)}")
+                
+        except Exception as e:
+            self.logger.error(f"Error in AI classification perspective {perspective_name}: {str(e)}")
+            raise RuntimeError(f"Failed to apply AI classification perspective: {str(e)}")
     
     def _apply_clustering_perspective(self, dataframe, perspective_name, perspective_config):
         """Apply traditional clustering perspective."""

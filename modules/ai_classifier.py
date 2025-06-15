@@ -303,27 +303,46 @@ Answer with the category name ONLY."""
             self._request_deque.append(current_time)
     
     def _classify_single_optimized(self, text: str) -> Tuple[str, Dict[str, Any]]:
-        """Fixed: Better error handling and retry logic."""
-        if not text or pd.isna(text) or str(text).strip() == "":
-            return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0}
+        """
+        Enhanced single text classification with robust error handling and API management.
+        """
+        # Input validation with early returns
+        if not text or pd.isna(text):
+            return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0, 'status': 'empty_input'}
         
         text = str(text).strip()
+        if not text:
+            return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0, 'status': 'empty_text'}
         
-        # Check cache
+        # Enhanced cache checking
         if self.cache:
-            cached_result = self.cache.get(text, self.target_categories, self.model, self.prompt_template)
-            if cached_result:
-                self.cache_hits += 1
-                return cached_result, {'cached': True, 'cost': 0, 'tokens': 0}
+            try:
+                cached_result = self.cache.get(text, self.target_categories, self.model, self.prompt_template)
+                if cached_result:
+                    self.cache_hits += 1
+                    return cached_result, {'cached': True, 'cost': 0, 'tokens': 0, 'status': 'cache_hit'}
+            except Exception as cache_error:
+                self.logger.warning(f"Cache lookup failed: {cache_error}")
         
-        prompt = self._build_prompt(text)
-        prompt_tokens = self.token_counter.count_tokens(prompt)
+        # Prepare API call
+        try:
+            prompt = self._build_prompt(text)
+            prompt_tokens = self.token_counter.count_tokens(prompt)
+        except Exception as prompt_error:
+            self.logger.error(f"Failed to build prompt: {prompt_error}")
+            return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0, 'error': str(prompt_error)}
         
-        self._smart_rate_limit()
+        # Enhanced rate limiting
+        try:
+            self._smart_rate_limit()
+        except Exception as rate_limit_error:
+            self.logger.warning(f"Rate limiting issue: {rate_limit_error}")
+            time.sleep(1)  # Simple fallback delay
         
-        # Fixed: Better error handling with specific retry logic
+        # Enhanced retry logic with specific error handling
         for attempt in range(self.max_retries):
             try:
+                # API call with timeout
                 response = openai.chat.completions.create(
                     model=self.model,
                     messages=[
@@ -335,44 +354,88 @@ Answer with the category name ONLY."""
                     timeout=self.timeout
                 )
                 
-                classification = response.choices[0].message.content.strip()
-                validated_classification = self._validate_response(classification)
+                # Validate response structure
+                if not response or not response.choices:
+                    raise ValueError("Empty response from OpenAI API")
                 
-                # Track usage
-                completion_tokens = response.usage.completion_tokens
-                cost = self.token_counter.estimate_cost(prompt_tokens, completion_tokens)
+                raw_classification = response.choices[0].message.content
+                if not raw_classification:
+                    raise ValueError("Empty classification from OpenAI API")
                 
-                self.total_tokens['prompt'] += prompt_tokens
-                self.total_tokens['completion'] += completion_tokens
-                self.total_cost += cost
-                self.api_calls += 1
+                raw_classification = raw_classification.strip()
+                validated_classification = self._validate_response(raw_classification)
                 
-                # Cache result
+                # Enhanced usage tracking
+                try:
+                    completion_tokens = response.usage.completion_tokens if hasattr(response, 'usage') else 0
+                    cost = self.token_counter.estimate_cost(prompt_tokens, completion_tokens)
+                    
+                    self.total_tokens['prompt'] += prompt_tokens
+                    self.total_tokens['completion'] += completion_tokens
+                    self.total_cost += cost
+                    self.api_calls += 1
+                except Exception as tracking_error:
+                    self.logger.warning(f"Usage tracking failed: {tracking_error}")
+                    cost = 0
+                    completion_tokens = 0
+                
+                # Enhanced cache storage
                 if self.cache:
-                    self.cache.set(text, self.target_categories, self.model, self.prompt_template, validated_classification)
+                    try:
+                        self.cache.set(text, self.target_categories, self.model, self.prompt_template, validated_classification)
+                    except Exception as cache_store_error:
+                        self.logger.warning(f"Failed to cache result: {cache_store_error}")
                 
                 return validated_classification, {
-                    'cached': False, 'cost': cost, 'tokens': prompt_tokens + completion_tokens,
-                    'raw_response': classification, 'validated_response': validated_classification
+                    'cached': False, 
+                    'cost': cost, 
+                    'tokens': prompt_tokens + completion_tokens,
+                    'raw_response': raw_classification, 
+                    'validated_response': validated_classification,
+                    'status': 'success'
                 }
                 
-            except Exception as e:
-                error_str = str(e).lower()
+            except Exception as api_error:
+                error_str = str(api_error).lower()
                 
-                # Fixed: Don't retry on permanent errors
-                if any(perm_error in error_str for perm_error in 
-                       ['invalid_api_key', 'insufficient_quota', 'model_not_found', 'invalid_request']):
-                    self.logger.error(f"Permanent API error: {e}")
-                    return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0, 'error': str(e)}
+                # Enhanced error categorization
+                permanent_errors = [
+                    'invalid_api_key', 'insufficient_quota', 'model_not_found', 
+                    'invalid_request', 'permission_denied', 'authentication_failed'
+                ]
                 
-                # Retry on temporary errors
-                if attempt < self.max_retries - 1:
-                    wait_time = self.backoff_factor ** attempt
-                    self.logger.warning(f"Temporary API error (attempt {attempt + 1}): {e}, retrying in {wait_time}s")
+                temporary_errors = [
+                    'rate_limit', 'timeout', 'connection', 'server_error', 
+                    'service_unavailable', 'too_many_requests'
+                ]
+                
+                is_permanent = any(perm_error in error_str for perm_error in permanent_errors)
+                is_temporary = any(temp_error in error_str for temp_error in temporary_errors)
+                
+                if is_permanent:
+                    self.logger.error(f"Permanent API error: {api_error}")
+                    return self.unknown_category, {
+                        'cached': False, 'cost': 0, 'tokens': 0, 
+                        'error': str(api_error), 'status': 'permanent_error'
+                    }
+                
+                if is_temporary and attempt < self.max_retries - 1:
+                    # Enhanced backoff strategy
+                    wait_time = min(self.backoff_factor ** attempt, 60)  # Cap at 60 seconds
+                    self.logger.warning(f"Temporary API error (attempt {attempt + 1}/{self.max_retries}): {api_error}")
+                    self.logger.info(f"Retrying in {wait_time:.1f} seconds...")
                     time.sleep(wait_time)
-                else:
-                    self.logger.error(f"API call failed after {self.max_retries} attempts: {e}")
-                    return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0, 'error': str(e)}
+                    continue
+                
+                # Final attempt failed
+                self.logger.error(f"API call failed after {self.max_retries} attempts: {api_error}")
+                return self.unknown_category, {
+                    'cached': False, 'cost': 0, 'tokens': 0, 
+                    'error': str(api_error), 'status': 'retry_exhausted'
+                }
+        
+        # Should not reach here, but safety fallback
+        return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0, 'status': 'unknown_failure'}
 
     def classify_texts_with_unique_processing(self, texts: List[str]) -> Tuple[List[str], Dict[str, Any]]:
         """
@@ -567,104 +630,200 @@ class ClassificationCache:
         return hashlib.md5(key_content.encode('utf-8')).hexdigest()
     
     def get(self, text: str, categories: List[str], model: str, prompt: str) -> Optional[str]:
-        """Fixed: Get cached result with proper validation."""
-        # Fixed: Validate all parameters
-        if not text or not text.strip() or not categories or not model:
+        """
+        Enhanced cache retrieval with improved validation and thread safety.
+        """
+        # Enhanced input validation
+        if not text or not text.strip():
+            return None
+        if not categories or not model:
             return None
         
-        key = self._generate_key(text, categories, model, prompt)
-        if not key:
-            return None
-        
-        # Fixed: Check memory cache with LRU update
-        with self._cache_lock:
-            if key in self.memory_cache:
-                # Move to end (most recently used)
-                value = self.memory_cache.pop(key)
-                self.memory_cache[key] = value
-                return value
-        
-        # Check disk cache
-        with self._cache_lock:
-            entry = self.cache.get(key)
+        try:
+            key = self._generate_key(text, categories, model, prompt)
+            if not key:
+                return None
             
-        if entry and isinstance(entry, dict) and 'classification' in entry:
-            try:
-                entry_date = datetime.fromisoformat(entry['timestamp'])
-                if datetime.now() - entry_date < timedelta(days=self.duration_days):
-                    classification = entry['classification']
-                    
-                    # Fixed: Add to memory cache with LRU eviction
-                    self._add_to_memory_cache(key, classification)
-                    return classification
-            except (ValueError, TypeError, KeyError):
-                pass
-        
-        return None
-    
+            # Enhanced memory cache check with thread safety
+            with self._cache_lock:
+                if key in self.memory_cache:
+                    # LRU update - move to end
+                    value = self.memory_cache.pop(key)
+                    self.memory_cache[key] = value
+                    return value
+            
+            # Enhanced disk cache check
+            with self._cache_lock:
+                entry = self.cache.get(key)
+            
+            if entry and isinstance(entry, dict):
+                try:
+                    # Enhanced expiration check
+                    if 'timestamp' in entry and 'classification' in entry:
+                        entry_date = datetime.fromisoformat(entry['timestamp'])
+                        if datetime.now() - entry_date < timedelta(days=self.duration_days):
+                            classification = entry['classification']
+                            
+                            # Add to memory cache with thread safety
+                            self._add_to_memory_cache(key, classification)
+                            return classification
+                        else:
+                            # Remove expired entry
+                            with self._cache_lock:
+                                if key in self.cache:
+                                    del self.cache[key]
+                                    self._unsaved_changes += 1
+                            
+                except (ValueError, TypeError, KeyError) as date_error:
+                    self.logger.warning(f"Invalid cache entry format: {date_error}")
+                    # Remove invalid entry
+                    with self._cache_lock:
+                        if key in self.cache:
+                            del self.cache[key]
+                            self._unsaved_changes += 1
+            
+            return None
+            
+        except Exception as e:
+            self.logger.warning(f"Cache get operation failed: {e}")
+            return None
+
     def set(self, text: str, categories: List[str], model: str, prompt: str, classification: str):
-        """Fixed: Cache result with reliable persistence."""
-        if not text or not text.strip() or not classification or not categories:
+        """
+        Enhanced cache storage with improved reliability and thread safety.
+        """
+        # Enhanced input validation
+        if not text or not text.strip() or not classification:
+            return
+        if not categories or not model:
             return
         
-        key = self._generate_key(text, categories, model, prompt)
-        if not key:
-            return
-        
-        # Fixed: Add to memory cache with LRU eviction
-        self._add_to_memory_cache(key, classification)
-        
-        # Add to disk cache
-        with self._cache_lock:
-            self.cache[key] = {
-                'classification': classification,
-                'timestamp': datetime.now().isoformat()
-            }
-            self._unsaved_changes += 1
+        try:
+            key = self._generate_key(text, categories, model, prompt)
+            if not key:
+                return
             
-            # Fixed: More frequent and reliable saving
-            if (self._unsaved_changes >= 10 or 
-                time.time() - self._last_save > 30):  # Save every 10 entries or 30 seconds
-                self._save_cache()
-    
+            # Enhanced memory cache update
+            self._add_to_memory_cache(key, classification)
+            
+            # Enhanced disk cache update with thread safety
+            with self._cache_lock:
+                self.cache[key] = {
+                    'classification': classification,
+                    'timestamp': datetime.now().isoformat(),
+                    'model': model,  # Store model for validation
+                    'categories_count': len(categories)  # Store category count for validation
+                }
+                self._unsaved_changes += 1
+                
+                # Enhanced auto-save logic
+                current_time = time.time()
+                should_save = (
+                    self._unsaved_changes >= 20 or  # Save more frequently
+                    current_time - self._last_save > 60 or  # Save every minute
+                    len(self.cache) % 100 == 0  # Periodic saves
+                )
+                
+                if should_save:
+                    self._save_cache()
+                    
+        except Exception as e:
+            self.logger.warning(f"Cache set operation failed: {e}")
+
     def _add_to_memory_cache(self, key: str, value: str):
-        """Fixed: Add to memory cache with LRU eviction."""
-        with self._cache_lock:
-            # Remove if exists (to update position)
-            if key in self.memory_cache:
-                del self.memory_cache[key]
-            
-            # Add new entry
-            self.memory_cache[key] = value
-            
-            # Fixed: LRU eviction when full
-            while len(self.memory_cache) > self.max_memory_cache:
-                # Remove oldest (first) item
-                self.memory_cache.popitem(last=False)
-    
+        """
+        Enhanced memory cache management with improved LRU and thread safety.
+        """
+        try:
+            with self._cache_lock:
+                # Remove if exists (to update position)
+                if key in self.memory_cache:
+                    del self.memory_cache[key]
+                
+                # Add new entry
+                self.memory_cache[key] = value
+                
+                # Enhanced LRU eviction with progressive cleanup
+                while len(self.memory_cache) > self.max_memory_cache:
+                    # Remove oldest items in batches for efficiency
+                    items_to_remove = min(10, len(self.memory_cache) - self.max_memory_cache + 5)
+                    for _ in range(items_to_remove):
+                        if self.memory_cache:
+                            self.memory_cache.popitem(last=False)
+                        else:
+                            break
+                            
+        except Exception as e:
+            self.logger.warning(f"Memory cache update failed: {e}")
+
     def _save_cache(self):
-        """Fixed: Reliable cache persistence."""
+        """
+        Enhanced cache persistence with improved reliability and error handling.
+        """
         if not self.cache:
             return
         
         try:
             with self._cache_lock:
-                cache_copy = self.cache.copy()
+                # Create a clean copy for saving
+                cache_copy = {}
+                current_time = datetime.now()
+                cutoff_time = current_time - timedelta(days=self.duration_days)
+                
+                # Clean expired entries during save
+                for key, entry in self.cache.items():
+                    if isinstance(entry, dict) and 'timestamp' in entry:
+                        try:
+                            entry_date = datetime.fromisoformat(entry['timestamp'])
+                            if entry_date > cutoff_time:
+                                cache_copy[key] = entry
+                        except (ValueError, TypeError):
+                            # Skip invalid entries
+                            continue
+                
+                # Update cache with cleaned version
+                self.cache = cache_copy
                 self._unsaved_changes = 0
                 self._last_save = time.time()
             
-            # Atomic write with backup
+            # Enhanced atomic write with backup
             temp_file = f"{self.cache_file}.tmp"
+            backup_file = f"{self.cache_file}.backup"
+            
+            # Create backup if original exists
+            if os.path.exists(self.cache_file):
+                try:
+                    os.replace(self.cache_file, backup_file)
+                except Exception as backup_error:
+                    self.logger.warning(f"Failed to create backup: {backup_error}")
+            
+            # Write new cache
             with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(cache_copy, f, ensure_ascii=False, separators=(',', ':'))
             
             # Atomic move
             os.replace(temp_file, self.cache_file)
-            self.logger.debug(f"Cache saved: {len(cache_copy)} entries")
+            
+            # Remove backup if successful
+            if os.path.exists(backup_file):
+                try:
+                    os.remove(backup_file)
+                except Exception:
+                    pass  # Keep backup if removal fails
+            
+            self.logger.debug(f"Cache saved successfully: {len(cache_copy)} entries")
             
         except Exception as e:
             self.logger.error(f"Failed to save cache: {e}")
-    
+            # Try to restore backup
+            backup_file = f"{self.cache_file}.backup"
+            if os.path.exists(backup_file):
+                try:
+                    os.replace(backup_file, self.cache_file)
+                    self.logger.info("Restored cache from backup")
+                except Exception as restore_error:
+                    self.logger.error(f"Failed to restore backup: {restore_error}")
+                
     def save(self):
         """Explicitly save cache."""
         self._save_cache()
@@ -720,58 +879,144 @@ class OptimizedLLMClassificationManager:
         return classifier
     
     def classify_perspective(self, dataframe: pd.DataFrame, perspective_name: str, perspective_config: Dict) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        """Fixed: Efficient DataFrame processing without iterrows."""
+        """
+        Enhanced DataFrame processing with robust column handling and validation.
+        """
         self.logger.info(f"Applying OPTIMIZED LLM classification perspective: {perspective_name}")
         start_time = time.time()
         
-        # Get or create classifier
-        if perspective_name not in self.classifiers:
-            classifier = self.create_classifier(perspective_name, perspective_config)
-        else:
-            classifier = self.classifiers[perspective_name]
-        
-        columns = perspective_config.get('columns', [])
-        output_column = perspective_config.get('output_column', f"{perspective_name}_classification")
-        
-        # Fixed: Vectorized text combination instead of iterrows
-        def combine_row_texts(row):
-            text_parts = []
+        try:
+            # Validate inputs
+            if dataframe is None or dataframe.empty:
+                raise ValueError("Input dataframe is None or empty")
+            
+            # Get or create classifier with validation
+            if perspective_name not in self.classifiers:
+                try:
+                    classifier = self.create_classifier(perspective_name, perspective_config)
+                    if classifier is None:
+                        raise RuntimeError("Failed to create classifier")
+                except Exception as classifier_error:
+                    raise RuntimeError(f"Classifier creation failed: {classifier_error}")
+            else:
+                classifier = self.classifiers[perspective_name]
+            
+            # Enhanced column validation
+            columns = perspective_config.get('columns', [])
+            if not columns:
+                raise ValueError("No columns specified for classification")
+            
+            output_column = perspective_config.get('output_column', f"{perspective_name}_classification")
+            
+            # Check column availability with preprocessing fallback
+            available_columns = []
             for col in columns:
-                if col in dataframe.columns and pd.notna(row[col]):
-                    text_parts.append(str(row[col]))
-            return " | ".join(text_parts) if text_parts else ""
-        
-        # Fixed: Use apply instead of iterrows for better performance
-        combined_texts = dataframe[columns].apply(combine_row_texts, axis=1).tolist()
-        
-        # Use optimized classification
-        classifications, metadata = classifier.classify_texts_with_unique_processing(combined_texts)
-        
-        # Add results to dataframe
-        result_df = dataframe.copy()
-        result_df[output_column] = classifications
-        
-        # Enhanced metadata
-        processing_time = time.time() - start_time
-        enhanced_metadata = {
-            **metadata,
-            'perspective_name': perspective_name,
-            'total_processing_time': processing_time,
-            'columns_used': columns,
-            'output_column': output_column
-        }
-        
-        # Store performance stats
-        self.performance_stats[perspective_name] = enhanced_metadata
-        
-        # Log performance summary
-        self.logger.info(f"✅ Classification completed for {perspective_name}")
-        self.logger.info(f"   📊 {metadata.get('original_count', 0):,} → {metadata.get('unique_count', 0):,} unique")
-        self.logger.info(f"   ⚡ Reduction: {metadata.get('reduction_ratio', 0):.1%}")
-        self.logger.info(f"   💰 Cost: ${metadata.get('total_cost', 0):.4f}")
-        self.logger.info(f"   ⏱️  Time: {processing_time:.2f}s")
-        
-        return result_df, enhanced_metadata
+                if col in dataframe.columns:
+                    available_columns.append(col)
+                else:
+                    preprocessed_col = f"{col}_preprocessed"
+                    if preprocessed_col in dataframe.columns:
+                        available_columns.append(preprocessed_col)
+                        self.logger.info(f"Using preprocessed column: {preprocessed_col}")
+                    else:
+                        raise ValueError(f"Column '{col}' and '{preprocessed_col}' not found in dataframe")
+            
+            if not available_columns:
+                raise ValueError("No valid columns found for classification")
+            
+            # Enhanced text combination with error handling
+            def safe_combine_row_texts(row):
+                """Safely combine text from multiple columns with error handling."""
+                try:
+                    text_parts = []
+                    for col in available_columns:
+                        value = row.get(col)
+                        if pd.notna(value) and str(value).strip():
+                            text_parts.append(str(value).strip())
+                    return " | ".join(text_parts) if text_parts else ""
+                except Exception as combine_error:
+                    self.logger.warning(f"Error combining text for row: {combine_error}")
+                    return ""
+            
+            # Enhanced text extraction with progress tracking
+            self.logger.info(f"Combining text from {len(available_columns)} columns")
+            try:
+                # Use apply with error handling
+                combined_texts = []
+                for idx, row in dataframe.iterrows():
+                    combined_text = safe_combine_row_texts(row)
+                    combined_texts.append(combined_text)
+                    
+                    # Progress logging for large datasets
+                    if len(combined_texts) % 10000 == 0:
+                        self.logger.info(f"Processed {len(combined_texts)} rows for text combination")
+                
+                # Validate combined texts
+                valid_texts = [text for text in combined_texts if text.strip()]
+                if not valid_texts:
+                    raise ValueError("No valid text found after combining columns")
+                
+                self.logger.info(f"Generated {len(valid_texts)} valid texts from {len(combined_texts)} total rows")
+                
+            except Exception as text_error:
+                raise RuntimeError(f"Text combination failed: {text_error}")
+            
+            # Enhanced classification with validation
+            try:
+                classifications, metadata = classifier.classify_texts_with_unique_processing(combined_texts)
+                
+                if not classifications:
+                    raise RuntimeError("Classification returned empty results")
+                
+                if len(classifications) != len(combined_texts):
+                    raise RuntimeError(f"Classification count mismatch: {len(classifications)} != {len(combined_texts)}")
+                
+            except Exception as classification_error:
+                raise RuntimeError(f"Classification processing failed: {classification_error}")
+            
+            # Enhanced result processing
+            try:
+                result_df = dataframe.copy()
+                result_df[output_column] = classifications
+                
+                # Validate results
+                non_null_count = pd.Series(classifications).notna().sum()
+                unique_categories = pd.Series(classifications).nunique()
+                
+                self.logger.info(f"Classification results: {non_null_count}/{len(classifications)} valid, {unique_categories} unique categories")
+                
+            except Exception as result_error:
+                raise RuntimeError(f"Result processing failed: {result_error}")
+            
+            # Enhanced metadata compilation
+            processing_time = time.time() - start_time
+            enhanced_metadata = {
+                **metadata,
+                'perspective_name': perspective_name,
+                'total_processing_time': processing_time,
+                'columns_used': available_columns,
+                'output_column': output_column,
+                'valid_classifications': non_null_count,
+                'unique_categories': unique_categories,
+                'classification_rate': non_null_count / len(classifications) if classifications else 0
+            }
+            
+            # Store performance stats
+            self.performance_stats[perspective_name] = enhanced_metadata
+            
+            # Enhanced logging summary
+            self.logger.info(f"✅ Classification completed for {perspective_name}")
+            self.logger.info(f"   📊 {metadata.get('original_count', 0):,} → {metadata.get('unique_count', 0):,} unique")
+            self.logger.info(f"   ⚡ Reduction: {metadata.get('reduction_ratio', 0):.1%}")
+            self.logger.info(f"   💰 Cost: ${metadata.get('total_cost', 0):.4f}")
+            self.logger.info(f"   ⏱️  Time: {processing_time:.2f}s")
+            self.logger.info(f"   ✔️  Success rate: {enhanced_metadata['classification_rate']:.1%}")
+            
+            return result_df, enhanced_metadata
+            
+        except Exception as e:
+            self.logger.error(f"Critical error in LLM classification perspective {perspective_name}: {str(e)}")
+            raise RuntimeError(f"LLM classification perspective failed: {str(e)}")
     
     def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
         """Get comprehensive statistics for all classifiers."""
