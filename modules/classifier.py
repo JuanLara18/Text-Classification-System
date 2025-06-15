@@ -18,7 +18,7 @@ import json
 import scipy.sparse
 # Import AI classification components
 from .ai_classifier import OptimizedLLMClassificationManager
-from .unique_row_processor import UniqueRowProcessor
+from .unique_row_processor import UniqueValueProcessor
 
 from sklearn.metrics import silhouette_score
 
@@ -1805,7 +1805,7 @@ class EnhancedClassifierManager:
                 dedupe_cols.append(proc_col if proc_col in pandas_df.columns else col)
 
             # Deduplicate rows based on relevant text columns
-            unique_processor = UniqueRowProcessor(self.logger)
+            unique_processor = UniqueValueProcessor(self.logger)
             unique_df, row_map = unique_processor.prepare_unique_rows(pandas_df, dedupe_cols)
 
             # Extract features for the specified columns
