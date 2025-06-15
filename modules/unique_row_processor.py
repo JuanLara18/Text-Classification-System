@@ -1,53 +1,75 @@
-class UniqueRowProcessor:
-    """Utility to deduplicate DataFrame rows based on selected text columns."""
+import re
+from collections import defaultdict
 
+class UniqueValueProcessor:
+    """Fixed processor for unique value classification and mapping."""
+    
     def __init__(self, logger):
         self.logger = logger
-        self.row_map = None
-        self.unique_df = None
-
-    def prepare_unique_rows(self, dataframe, columns):
-        """Return DataFrame with unique rows and mapping to originals."""
-        from collections import defaultdict
-
-        if not columns:
-            self.logger.warning("No columns provided for deduplication")
-            self.row_map = {i: [i] for i in range(len(dataframe))}
-            self.unique_df = dataframe.copy()
-            return self.unique_df, self.row_map
-
-        self.logger.info(
-            f"Finding unique rows using columns: {columns}")
-
-        # Normalize specified columns for comparison
-        normalized = dataframe[columns].fillna("").astype(str)
-        normalized = normalized.apply(lambda row: tuple(row.str.strip().str.lower()), axis=1)
-
-        row_to_indices = defaultdict(list)
-        for idx, key in enumerate(normalized):
-            row_to_indices[key].append(idx)
-
-        unique_indices = [indices[0] for indices in row_to_indices.values()]
-        self.unique_df = dataframe.iloc[unique_indices].reset_index(drop=True)
-
-        self.row_map = {}
-        for new_idx, key in enumerate(row_to_indices.keys()):
-            self.row_map[new_idx] = row_to_indices[key]
-
-        reduction_ratio = len(self.unique_df) / len(dataframe) if len(dataframe) else 0
-        self.logger.info(
-            f"Reduced {len(dataframe)} rows to {len(self.unique_df)} unique rows ({reduction_ratio:.2%} reduction)")
-
-        return self.unique_df, self.row_map
-
-    def map_results_to_full(self, unique_results, original_length):
-        """Map results from unique rows back to full dataset."""
-        if self.row_map is None:
-            raise ValueError("Must call prepare_unique_rows first")
-
-        results = [None] * original_length
-        for unique_idx, value in enumerate(unique_results):
-            indices = self.row_map.get(unique_idx, [])
-            for idx in indices:
-                results[idx] = value
+        self.value_map = None
+    
+    def prepare_unique_classification(self, texts: List[str]) -> Tuple[List[str], Dict[str, List[int]]]:
+        """Fixed: Better normalization and unique value extraction."""
+        self.logger.info(f"Processing {len(texts)} texts for unique value extraction")
+        
+        value_to_indices = defaultdict(list)
+        
+        for i, text in enumerate(texts):
+            # Fixed: Comprehensive normalization
+            normalized_text = self._normalize_text(text)
+            value_to_indices[normalized_text].append(i)
+        
+        # Extract unique values, preserving original formatting
+        unique_texts = []
+        self.value_map = {}
+        
+        for normalized_text, indices in value_to_indices.items():
+            if normalized_text:  # Skip empty
+                # Use first occurrence as canonical form
+                original_text = texts[indices[0]]
+                unique_texts.append(original_text)
+                self.value_map[original_text] = indices
+        
+        # Handle empty values
+        if "" in value_to_indices:
+            self.value_map[""] = value_to_indices[""]
+        
+        reduction_ratio = len(unique_texts) / len(texts) if texts else 0
+        self.logger.info(f"Reduced {len(texts)} texts to {len(unique_texts)} unique values "
+                        f"({reduction_ratio:.2%} reduction)")
+        
+        return unique_texts, self.value_map
+    
+    def _normalize_text(self, text) -> str:
+        """Fixed: Consistent text normalization."""
+        if text is None or pd.isna(text):
+            return ""
+        
+        # Convert to string and normalize
+        text_str = str(text)
+        
+        # Fixed: Comprehensive normalization
+        # Remove extra whitespace but preserve single spaces
+        normalized = re.sub(r'\s+', ' ', text_str.strip())
+        
+        # Convert to lowercase for comparison (but preserve original case in storage)
+        normalized = normalized.lower()
+        
+        return normalized if normalized else ""
+    
+    def map_results_to_original(self, unique_results: List[str], original_length: int) -> List[str]:
+        """Map classification results back to original dataset."""
+        if not self.value_map:
+            raise ValueError("Must call prepare_unique_classification first")
+        
+        results = ["Unknown"] * original_length
+        
+        # Map unique results back
+        for i, (unique_text, classification) in enumerate(zip(self.value_map.keys(), unique_results)):
+            if unique_text in self.value_map:
+                indices = self.value_map[unique_text]
+                for idx in indices:
+                    if idx < original_length:  # Safety check
+                        results[idx] = classification
+        
         return results

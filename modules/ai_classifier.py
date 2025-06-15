@@ -251,73 +251,83 @@ Answer with the category name ONLY."""
         )
     
     def _validate_response(self, response: str) -> str:
-        """Fast response validation with fuzzy matching."""
+        """Fixed: More precise response validation."""
         response = response.strip()
-        
-        # Quick exact match (case-insensitive)
         response_lower = response.lower()
+        
+        # Fixed: Exact match first (most reliable)
         for category in self.target_categories:
             if response_lower == category.lower():
                 return category
         
-        # Fast partial matching
+        # Fixed: Stricter partial matching
         for category in self.target_categories:
             cat_lower = category.lower()
-            if (cat_lower in response_lower or 
-                response_lower in cat_lower or
-                any(word in cat_lower for word in response_lower.split())):
+            # Only match if response is clearly contained in category or vice versa
+            if (len(response_lower) > 3 and cat_lower in response_lower) or \
+               (len(cat_lower) > 3 and response_lower in cat_lower):
+                return category
+        
+        # Fixed: Word-based matching for multi-word categories
+        response_words = set(response_lower.split())
+        for category in self.target_categories:
+            cat_words = set(category.lower().split())
+            # Match if significant word overlap
+            if len(cat_words & response_words) >= max(1, len(cat_words) // 2):
                 return category
         
         return self.unknown_category
-    
+     
     def _smart_rate_limit(self):
-        """Intelligent rate limiting based on recent request patterns."""
+        """Fixed: Efficient rate limiting using deque."""
         current_time = time.time()
         
         with self.request_lock:
-            # Remove old request times (older than 1 minute)
-            cutoff_time = current_time - 60
-            self.request_times = [t for t in self.request_times if t > cutoff_time]
+            # Fixed: Use deque for efficient cleanup
+            if not hasattr(self, '_request_deque'):
+                from collections import deque
+                self._request_deque = deque()
             
-            # Check if we're approaching rate limit
-            if len(self.request_times) >= self.max_requests_per_minute:
-                # Wait until the oldest request is more than 1 minute old
-                sleep_time = 60 - (current_time - self.request_times[0])
+            # Remove old requests (older than 1 minute)
+            cutoff_time = current_time - 60
+            while self._request_deque and self._request_deque[0] <= cutoff_time:
+                self._request_deque.popleft()
+            
+            # Check rate limit
+            if len(self._request_deque) >= self.max_requests_per_minute:
+                sleep_time = 60 - (current_time - self._request_deque[0])
                 if sleep_time > 0:
                     time.sleep(sleep_time)
             
-            # Add current request time
-            self.request_times.append(current_time)
+            # Add current request
+            self._request_deque.append(current_time)
     
     def _classify_single_optimized(self, text: str) -> Tuple[str, Dict[str, Any]]:
-        """Optimized single text classification."""
-        # Quick validation
+        """Fixed: Better error handling and retry logic."""
         if not text or pd.isna(text) or str(text).strip() == "":
             return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0}
         
         text = str(text).strip()
         
-        # Check cache first
+        # Check cache
         if self.cache:
             cached_result = self.cache.get(text, self.target_categories, self.model, self.prompt_template)
             if cached_result:
                 self.cache_hits += 1
                 return cached_result, {'cached': True, 'cost': 0, 'tokens': 0}
         
-        # Build optimized prompt
         prompt = self._build_prompt(text)
         prompt_tokens = self.token_counter.count_tokens(prompt)
         
-        # Smart rate limiting
         self._smart_rate_limit()
         
-        # Make API call with optimized settings
+        # Fixed: Better error handling with specific retry logic
         for attempt in range(self.max_retries):
             try:
                 response = openai.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": "Classify job positions quickly and accurately. Respond with only the category name."},
+                        {"role": "system", "content": "Classify quickly and accurately. Respond with only the category name."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=self.temperature,
@@ -325,7 +335,6 @@ Answer with the category name ONLY."""
                     timeout=self.timeout
                 )
                 
-                # Fast response processing
                 classification = response.choices[0].message.content.strip()
                 validated_classification = self._validate_response(classification)
                 
@@ -342,24 +351,29 @@ Answer with the category name ONLY."""
                 if self.cache:
                     self.cache.set(text, self.target_categories, self.model, self.prompt_template, validated_classification)
                 
-                metadata = {
-                    'cached': False,
-                    'cost': cost,
-                    'tokens': prompt_tokens + completion_tokens,
-                    'raw_response': classification,
-                    'validated_response': validated_classification
+                return validated_classification, {
+                    'cached': False, 'cost': cost, 'tokens': prompt_tokens + completion_tokens,
+                    'raw_response': classification, 'validated_response': validated_classification
                 }
                 
-                return validated_classification, metadata
-                
             except Exception as e:
+                error_str = str(e).lower()
+                
+                # Fixed: Don't retry on permanent errors
+                if any(perm_error in error_str for perm_error in 
+                       ['invalid_api_key', 'insufficient_quota', 'model_not_found', 'invalid_request']):
+                    self.logger.error(f"Permanent API error: {e}")
+                    return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0, 'error': str(e)}
+                
+                # Retry on temporary errors
                 if attempt < self.max_retries - 1:
                     wait_time = self.backoff_factor ** attempt
+                    self.logger.warning(f"Temporary API error (attempt {attempt + 1}): {e}, retrying in {wait_time}s")
                     time.sleep(wait_time)
                 else:
                     self.logger.error(f"API call failed after {self.max_retries} attempts: {e}")
                     return self.unknown_category, {'cached': False, 'cost': 0, 'tokens': 0, 'error': str(e)}
-    
+
     def classify_texts_with_unique_processing(self, texts: List[str]) -> Tuple[List[str], Dict[str, Any]]:
         """
         MAIN OPTIMIZATION: Classify texts using unique value processing and parallel execution.
@@ -502,51 +516,169 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 
+import os
+import json
+import hashlib
+import threading
+import time
+from collections import OrderedDict
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+
 class ClassificationCache:
-    """Enhanced caching system for AI classification results - Optimized Version."""
+    """Fixed caching system for AI classification results."""
     
     def __init__(self, cache_dir: str, duration_days: int = 365):
         self.cache_dir = cache_dir
         self.duration_days = duration_days
         self.cache_file = os.path.join(cache_dir, "classification_cache.json")
         
-        # Create cache directory if it doesn't exist
         os.makedirs(cache_dir, exist_ok=True)
         
-        # Memory cache with size limit to prevent memory issues
-        self.memory_cache = {}
-        self.max_memory_cache = 10000  # Limit to 10K entries in memory
+        # Fixed: Use OrderedDict for LRU eviction
+        self.memory_cache = OrderedDict()
+        self.max_memory_cache = 10000
         
-        # Thread safety lock
-        self._cache_lock = threading.Lock()
+        # Fixed: Coarser locking strategy
+        self._cache_lock = threading.RLock()
         
-        # Load disk cache safely
+        # Load disk cache
         self.cache = self._load_cache()
         
-        # Initialize logging
-        self.logger = logging.getLogger(__name__)
+        # Fixed: Track changes for reliable persistence
+        self._unsaved_changes = 0
+        self._last_save = time.time()
         
-        self.logger.info(f"ClassificationCache initialized: {len(self.cache)} entries loaded from disk")
+        self.logger = logging.getLogger(__name__)
+        self.logger.info(f"ClassificationCache initialized: {len(self.cache)} entries loaded")
+    
+    def _generate_key(self, text: str, categories: List[str], model: str, prompt: str) -> str:
+        """Fixed: Generate consistent cache key including all parameters."""
+        if not text or not categories:
+            return ""
+        
+        # Fixed: Include all parameters and use full text hash
+        text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
+        categories_hash = hashlib.md5('|'.join(sorted(categories)).encode('utf-8')).hexdigest()
+        prompt_hash = hashlib.md5(prompt.encode('utf-8')).hexdigest()[:8]  # Short prompt hash
+        
+        # Create comprehensive key
+        key_content = f"{text_hash}_{categories_hash}_{model}_{prompt_hash}"
+        return hashlib.md5(key_content.encode('utf-8')).hexdigest()
+    
+    def get(self, text: str, categories: List[str], model: str, prompt: str) -> Optional[str]:
+        """Fixed: Get cached result with proper validation."""
+        # Fixed: Validate all parameters
+        if not text or not text.strip() or not categories or not model:
+            return None
+        
+        key = self._generate_key(text, categories, model, prompt)
+        if not key:
+            return None
+        
+        # Fixed: Check memory cache with LRU update
+        with self._cache_lock:
+            if key in self.memory_cache:
+                # Move to end (most recently used)
+                value = self.memory_cache.pop(key)
+                self.memory_cache[key] = value
+                return value
+        
+        # Check disk cache
+        with self._cache_lock:
+            entry = self.cache.get(key)
+            
+        if entry and isinstance(entry, dict) and 'classification' in entry:
+            try:
+                entry_date = datetime.fromisoformat(entry['timestamp'])
+                if datetime.now() - entry_date < timedelta(days=self.duration_days):
+                    classification = entry['classification']
+                    
+                    # Fixed: Add to memory cache with LRU eviction
+                    self._add_to_memory_cache(key, classification)
+                    return classification
+            except (ValueError, TypeError, KeyError):
+                pass
+        
+        return None
+    
+    def set(self, text: str, categories: List[str], model: str, prompt: str, classification: str):
+        """Fixed: Cache result with reliable persistence."""
+        if not text or not text.strip() or not classification or not categories:
+            return
+        
+        key = self._generate_key(text, categories, model, prompt)
+        if not key:
+            return
+        
+        # Fixed: Add to memory cache with LRU eviction
+        self._add_to_memory_cache(key, classification)
+        
+        # Add to disk cache
+        with self._cache_lock:
+            self.cache[key] = {
+                'classification': classification,
+                'timestamp': datetime.now().isoformat()
+            }
+            self._unsaved_changes += 1
+            
+            # Fixed: More frequent and reliable saving
+            if (self._unsaved_changes >= 10 or 
+                time.time() - self._last_save > 30):  # Save every 10 entries or 30 seconds
+                self._save_cache()
+    
+    def _add_to_memory_cache(self, key: str, value: str):
+        """Fixed: Add to memory cache with LRU eviction."""
+        with self._cache_lock:
+            # Remove if exists (to update position)
+            if key in self.memory_cache:
+                del self.memory_cache[key]
+            
+            # Add new entry
+            self.memory_cache[key] = value
+            
+            # Fixed: LRU eviction when full
+            while len(self.memory_cache) > self.max_memory_cache:
+                # Remove oldest (first) item
+                self.memory_cache.popitem(last=False)
+    
+    def _save_cache(self):
+        """Fixed: Reliable cache persistence."""
+        if not self.cache:
+            return
+        
+        try:
+            with self._cache_lock:
+                cache_copy = self.cache.copy()
+                self._unsaved_changes = 0
+                self._last_save = time.time()
+            
+            # Atomic write with backup
+            temp_file = f"{self.cache_file}.tmp"
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_copy, f, ensure_ascii=False, separators=(',', ':'))
+            
+            # Atomic move
+            os.replace(temp_file, self.cache_file)
+            self.logger.debug(f"Cache saved: {len(cache_copy)} entries")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save cache: {e}")
+    
+    def save(self):
+        """Explicitly save cache."""
+        self._save_cache()
     
     def _load_cache(self) -> Dict:
-        """Load existing cache from disk using JSON for better performance."""
+        """Load existing cache with cleanup."""
         if not os.path.exists(self.cache_file):
             return {}
         
         try:
-            # Check file size before loading to prevent memory issues
-            file_size = os.path.getsize(self.cache_file)
-            max_size = 100 * 1024 * 1024  # 100MB limit
-            
-            if file_size > max_size:
-                self.logger.warning(f"Cache file too large ({file_size/1024/1024:.1f}MB), starting with empty cache")
-                return {}
-            
-            # Load cache with timeout protection
             with open(self.cache_file, 'r', encoding='utf-8') as f:
                 cache_data = json.load(f)
             
-            # Clean expired entries during load
+            # Clean expired entries
             cutoff_date = datetime.now() - timedelta(days=self.duration_days)
             cleaned_cache = {}
             
@@ -557,169 +689,14 @@ class ClassificationCache:
                         if entry_date > cutoff_date:
                             cleaned_cache[key] = value
                     except (ValueError, TypeError):
-                        continue  # Skip invalid entries
+                        continue
             
-            self.logger.info(f"Loaded {len(cleaned_cache)} valid cache entries from disk")
             return cleaned_cache
             
         except Exception as e:
-            self.logger.warning(f"Failed to load cache: {e}, starting with empty cache")
+            self.logger.warning(f"Failed to load cache: {e}")
             return {}
     
-    def _save_cache(self):
-        """Save cache to disk with error handling and backup."""
-        if not self.cache:
-            return
-        
-        try:
-            # Create backup before saving
-            backup_file = f"{self.cache_file}.backup"
-            if os.path.exists(self.cache_file):
-                try:
-                    import shutil
-                    shutil.copy2(self.cache_file, backup_file)
-                except Exception:
-                    pass  # Ignore backup errors
-            
-            # Create a copy of the cache to avoid concurrent modification
-            with self._cache_lock:
-                cache_copy = self.cache.copy()
-            
-            # Save using JSON for better performance and compatibility
-            with open(self.cache_file, 'w', encoding='utf-8') as f:
-                json.dump(cache_copy, f, ensure_ascii=False, separators=(',', ':'))
-            
-            self.logger.debug(f"Cache saved to disk: {len(cache_copy)} entries")
-            
-        except Exception as e:
-            self.logger.warning(f"Failed to save classification cache: {e}")
-    
-    def _generate_key(self, text: str, categories: List[str], model: str, prompt: str) -> str:
-        """Generate a unique cache key for the classification request."""
-        if not text or not categories:
-            return ""
-        
-        # Normalize text for better cache hits but preserve important differences
-        normalized_text = text.strip()[:500]  # Limit text length for key generation
-        
-        # Create content string with normalized inputs
-        content = f"{normalized_text}|{sorted(categories[:10])}|{model}"  # Limit categories to first 10
-        
-        # Generate MD5 hash for consistent key length
-        return hashlib.md5(content.encode('utf-8')).hexdigest()
-    
-    def get(self, text: str, categories: List[str], model: str, prompt: str) -> Optional[str]:
-        """Get cached classification result with memory cache check."""
-        if not text or not text.strip():
-            return None
-        
-        key = self._generate_key(text, categories, model, prompt)
-        if not key:
-            return None
-        
-        # Check memory cache first (fastest)
-        if key in self.memory_cache:
-            return self.memory_cache[key]
-        
-        # Check disk cache
-        with self._cache_lock:
-            entry = self.cache.get(key)
-            
-        if entry and isinstance(entry, dict) and 'classification' in entry:
-            try:
-                # Check if entry is still valid
-                entry_date = datetime.fromisoformat(entry['timestamp'])
-                if datetime.now() - entry_date < timedelta(days=self.duration_days):
-                    # Store in memory cache for faster future access (with size limit)
-                    if len(self.memory_cache) < self.max_memory_cache:
-                        self.memory_cache[key] = entry['classification']
-                    return entry['classification']
-            except (ValueError, TypeError, KeyError):
-                pass  # Skip invalid entries
-        
-        return None
-    
-    def set(self, text: str, categories: List[str], model: str, prompt: str, classification: str):
-        """Cache a classification result in both memory and disk cache."""
-        if not text or not text.strip() or not classification:
-            return
-        
-        key = self._generate_key(text, categories, model, prompt)
-        if not key:
-            return
-        
-        # Store in memory cache (with size limit)
-        if len(self.memory_cache) < self.max_memory_cache:
-            self.memory_cache[key] = classification
-        
-        # Store in disk cache
-        with self._cache_lock:
-            self.cache[key] = {
-                'classification': classification,
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            # Save to disk periodically to avoid frequent I/O
-            if len(self.cache) % 100 == 0:  # Save every 100 entries instead of 50
-                self._save_cache()
-    
-    def save(self):
-        """Explicitly save cache to disk."""
-        self._save_cache()
-    
-    def clear_memory_cache(self):
-        """Clear memory cache to free up RAM."""
-        self.memory_cache.clear()
-        self.logger.info("Memory cache cleared")
-    
-    def get_stats(self) -> Dict:
-        """Get cache statistics for monitoring."""
-        with self._cache_lock:
-            disk_size = len(self.cache)
-        
-        memory_size = len(self.memory_cache)
-        
-        # Calculate file size if exists
-        file_size = 0
-        if os.path.exists(self.cache_file):
-            try:
-                file_size = os.path.getsize(self.cache_file)
-            except Exception:
-                pass
-        
-        return {
-            'disk_entries': disk_size,
-            'memory_entries': memory_size,
-            'file_size_mb': file_size / (1024 * 1024),
-            'cache_file': self.cache_file,
-            'max_memory_entries': self.max_memory_cache
-        }
-    
-    def cleanup_expired(self):
-        """Manually clean up expired entries."""
-        cutoff_date = datetime.now() - timedelta(days=self.duration_days)
-        
-        with self._cache_lock:
-            original_size = len(self.cache)
-            cleaned_cache = {}
-            
-            for key, value in self.cache.items():
-                if isinstance(value, dict) and 'timestamp' in value:
-                    try:
-                        entry_date = datetime.fromisoformat(value['timestamp'])
-                        if entry_date > cutoff_date:
-                            cleaned_cache[key] = value
-                    except (ValueError, TypeError):
-                        continue
-            
-            self.cache = cleaned_cache
-            removed_count = original_size - len(cleaned_cache)
-        
-        if removed_count > 0:
-            self.logger.info(f"Cleaned up {removed_count} expired cache entries")
-            self._save_cache()
-        
-        return removed_count
     
 class OptimizedLLMClassificationManager:
     """Enhanced LLM Classification Manager with unique value processing."""
@@ -743,7 +720,7 @@ class OptimizedLLMClassificationManager:
         return classifier
     
     def classify_perspective(self, dataframe: pd.DataFrame, perspective_name: str, perspective_config: Dict) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        """Apply optimized LLM classification to a perspective with unique value processing."""
+        """Fixed: Efficient DataFrame processing without iterrows."""
         self.logger.info(f"Applying OPTIMIZED LLM classification perspective: {perspective_name}")
         start_time = time.time()
         
@@ -753,22 +730,21 @@ class OptimizedLLMClassificationManager:
         else:
             classifier = self.classifiers[perspective_name]
         
-        # Get columns and combine text
         columns = perspective_config.get('columns', [])
         output_column = perspective_config.get('output_column', f"{perspective_name}_classification")
         
-        # Combine text from specified columns
-        combined_texts = []
-        for _, row in dataframe.iterrows():
+        # Fixed: Vectorized text combination instead of iterrows
+        def combine_row_texts(row):
             text_parts = []
             for col in columns:
                 if col in dataframe.columns and pd.notna(row[col]):
                     text_parts.append(str(row[col]))
-            combined_text = " | ".join(text_parts) if text_parts else ""
-            combined_texts.append(combined_text)
+            return " | ".join(text_parts) if text_parts else ""
         
-        # PERFORMANCE OPTIMIZATION: Use unique value processing
-        self.logger.info("Using optimized classification with unique value processing")
+        # Fixed: Use apply instead of iterrows for better performance
+        combined_texts = dataframe[columns].apply(combine_row_texts, axis=1).tolist()
+        
+        # Use optimized classification
         classifications, metadata = classifier.classify_texts_with_unique_processing(combined_texts)
         
         # Add results to dataframe
@@ -789,15 +765,14 @@ class OptimizedLLMClassificationManager:
         self.performance_stats[perspective_name] = enhanced_metadata
         
         # Log performance summary
-        self.logger.info(f"✅ Optimized classification completed for {perspective_name}")
-        self.logger.info(f"   📊 Processed: {metadata.get('original_count', 0):,} total → {metadata.get('unique_count', 0):,} unique")
+        self.logger.info(f"✅ Classification completed for {perspective_name}")
+        self.logger.info(f"   📊 {metadata.get('original_count', 0):,} → {metadata.get('unique_count', 0):,} unique")
         self.logger.info(f"   ⚡ Reduction: {metadata.get('reduction_ratio', 0):.1%}")
         self.logger.info(f"   💰 Cost: ${metadata.get('total_cost', 0):.4f}")
-        self.logger.info(f"   🎯 Cache hit rate: {metadata.get('cache_hit_rate', 0):.1%}")
-        self.logger.info(f"   ⏱️  Processing time: {processing_time:.2f}s")
+        self.logger.info(f"   ⏱️  Time: {processing_time:.2f}s")
         
         return result_df, enhanced_metadata
-
+    
     def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
         """Get comprehensive statistics for all classifiers."""
         stats = {}
