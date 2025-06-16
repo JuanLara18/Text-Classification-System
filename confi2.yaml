@@ -41,76 +41,76 @@ clustering_perspectives:
   # =============================================================================
 
   # Industry Standard: Severity-Based Classification
-  bmw_errors_severity:
-    type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
-    target_categories:
-      - "Critical Defects"
-      - "Major Defects"
-      - "Minor Defects"
-      - "Other"
-      - "Unknown"
-    output_column: "bmw_error_severity"
-    
-    llm_config:
-      provider: "openai"
-      model: "gpt-3.5-turbo-0125"  # Faster model for high throughput
-      temperature: 0.0
-      max_tokens: 15  # Reduced for speed
-      api_key_env: "OPENAI_API_KEY"
-    
-    classification_config:
-      batch_size: 100  # Increased batch size for high-performance system
-      unknown_category: "Unknown"
-      prompt_template: |
-        Classify this BMW manufacturing error by severity level following automotive industry standards.
-
-        SEVERITY LEVELS:
-        - "Critical Defects": Safety hazards, unusable products, potential recalls
-        - "Major Defects": Significant spec deviations, affect function/performance
-        - "Minor Defects": Minor spec non-compliance, minimal impact
-        - "Other": Clear errors not fitting severity categories
-        - "Unknown": Insufficient information
-
-        ERROR: {text}
-
-        Category name only:
-
-  # Industry Standard: Origin-Based Classification  
-  bmw_errors_origin:
-    type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
-    target_categories:
-      - "Manufacturing Defects"
-      - "Design Flaws"
-      - "Mislabeling"
-      - "Other"
-      - "Unknown"
-    output_column: "bmw_error_origin"
-    
-    llm_config:
-      provider: "openai"
-      model: "gpt-3.5-turbo-0125"
-      temperature: 0.0
-      max_tokens: 15
-      api_key_env: "OPENAI_API_KEY"
-    
-    classification_config:
-      batch_size: 100
-      unknown_category: "Unknown"
-      prompt_template: |
-        Classify this BMW error by origin following automotive standards.
-
-        ORIGINS:
-        - "Manufacturing Defects": Production process errors, assembly issues
-        - "Design Flaws": Engineering design problems, specification issues
-        - "Mislabeling": Documentation errors, incorrect labeling
-        - "Other": Clear origin not fitting above
-        - "Unknown": Insufficient data
-
-        ERROR: {text}
-
-        Category name only:
+#  bmw_errors_severity:
+#    type: "openai_classification"
+#    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+#    target_categories:
+#      - "Critical Defects"
+#      - "Major Defects"
+#      - "Minor Defects"
+#      - "Other"
+#      - "Unknown"
+#    output_column: "bmw_error_severity"
+#    
+#    llm_config:
+#      provider: "openai"
+#      model: "gpt-3.5-turbo-0125"  # Faster model for high throughput
+#      temperature: 0.0
+#      max_tokens: 15  # Reduced for speed
+#      api_key_env: "OPENAI_API_KEY"
+#    
+#    classification_config:
+#      batch_size: 100  # Increased batch size for high-performance system
+#      unknown_category: "Unknown"
+#      prompt_template: |
+#        Classify this BMW manufacturing error by severity level following automotive industry standards.#
+#
+#        SEVERITY LEVELS:
+#        - "Critical Defects": Safety hazards, unusable products, potential recalls
+#        - "Major Defects": Significant spec deviations, affect function/performance
+#        - "Minor Defects": Minor spec non-compliance, minimal impact
+#        - "Other": Clear errors not fitting severity categories
+#        - "Unknown": Insufficient information
+#
+#        ERROR: {text}
+#
+#        Category name only:
+#
+#  # Industry Standard: Origin-Based Classification  
+#  bmw_errors_origin:
+#    type: "openai_classification"
+#    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+#    target_categories:
+#      - "Manufacturing Defects"
+#      - "Design Flaws"
+#      - "Mislabeling"
+#      - "Other"
+#      - "Unknown"
+#    output_column: "bmw_error_origin"
+#    
+#    llm_config:
+#      provider: "openai"
+#      model: "gpt-3.5-turbo-0125"
+#      temperature: 0.0
+#      max_tokens: 15
+#      api_key_env: "OPENAI_API_KEY"
+#    
+#    classification_config:
+#      batch_size: 100
+#      unknown_category: "Unknown"
+#      prompt_template: |
+#        Classify this BMW error by origin following automotive standards.
+#
+#        ORIGINS:
+#        - "Manufacturing Defects": Production process errors, assembly issues
+#        - "Design Flaws": Engineering design problems, specification issues
+#        - "Mislabeling": Documentation errors, incorrect labeling
+#        - "Other": Clear origin not fitting above
+#        - "Unknown": Insufficient data
+#
+#        ERROR: {text}
+#
+#        Category name only:
 
   # =============================================================================
   # EXPERT DEFINED CLASSIFICATIONS (4 perspectives)
