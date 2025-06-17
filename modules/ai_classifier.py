@@ -592,6 +592,9 @@ class ClassificationCache:
     """Fixed caching system for AI classification results."""
     
     def __init__(self, cache_dir: str, duration_days: int = 365):
+        """
+        Enhanced initialization with better logging and cache recovery.
+        """
         self.cache_dir = cache_dir
         self.duration_days = duration_days
         self.cache_file = os.path.join(cache_dir, "classification_cache.json")
@@ -605,15 +608,32 @@ class ClassificationCache:
         # Fixed: Coarser locking strategy
         self._cache_lock = threading.RLock()
         
-        # Load disk cache
+        # Enhanced cache loading with recovery
+        self.logger = logging.getLogger(__name__)
+        self.logger.info(f"Initializing ClassificationCache in directory: {cache_dir}")
+        
+        # Check what cache files exist
+        main_exists = os.path.exists(self.cache_file)
+        tmp_exists = os.path.exists(f"{self.cache_file}.tmp")
+        backup_exists = os.path.exists(f"{self.cache_file}.backup")
+        
+        self.logger.info(f"Cache file status - Main: {main_exists}, Tmp: {tmp_exists}, Backup: {backup_exists}")
+        
+        if tmp_exists:
+            tmp_size = os.path.getsize(f"{self.cache_file}.tmp") / 1024 / 1024
+            self.logger.info(f"Found .tmp file with size: {tmp_size:.1f}MB")
+        if backup_exists:
+            backup_size = os.path.getsize(f"{self.cache_file}.backup") / 1024 / 1024
+            self.logger.info(f"Found .backup file with size: {backup_size:.1f}MB")
+        
+        # Load cache with recovery
         self.cache = self._load_cache()
         
         # Fixed: Track changes for reliable persistence
         self._unsaved_changes = 0
         self._last_save = time.time()
         
-        self.logger = logging.getLogger(__name__)
-        self.logger.info(f"ClassificationCache initialized: {len(self.cache)} entries loaded")
+        self.logger.info(f"ClassificationCache initialized: {len(self.cache)} entries loaded and ready")
     
     def _generate_key(self, text: str, categories: List[str], model: str, prompt: str) -> str:
         """Fixed: Generate consistent cache key including all parameters."""
@@ -758,9 +778,10 @@ class ClassificationCache:
 
     def _save_cache(self):
         """
-        Enhanced cache persistence with improved reliability and error handling.
+        Enhanced cache persistence with improved error handling and recovery.
         """
         if not self.cache:
+            self.logger.warning("No cache data to save")
             return
         
         try:
@@ -771,6 +792,7 @@ class ClassificationCache:
                 cutoff_time = current_time - timedelta(days=self.duration_days)
                 
                 # Clean expired entries during save
+                original_count = len(self.cache)
                 for key, entry in self.cache.items():
                     if isinstance(entry, dict) and 'timestamp' in entry:
                         try:
@@ -781,81 +803,164 @@ class ClassificationCache:
                             # Skip invalid entries
                             continue
                 
+                cleaned_count = len(cache_copy)
+                removed_count = original_count - cleaned_count
+                
                 # Update cache with cleaned version
                 self.cache = cache_copy
                 self._unsaved_changes = 0
                 self._last_save = time.time()
+                
+                self.logger.info(f"Preparing to save cache: {cleaned_count} entries ({removed_count} expired entries removed)")
             
-            # Enhanced atomic write with backup
+            # Enhanced atomic write with better error handling
             temp_file = f"{self.cache_file}.tmp"
             backup_file = f"{self.cache_file}.backup"
             
-            # Create backup if original exists
+            # Step 1: Create backup of existing file if it exists
             if os.path.exists(self.cache_file):
                 try:
-                    os.replace(self.cache_file, backup_file)
+                    # Create backup with timestamp for safety
+                    timestamp_backup = f"{backup_file}.{int(time.time())}"
+                    os.replace(self.cache_file, timestamp_backup)
+                    self.logger.debug(f"Created timestamped backup: {timestamp_backup}")
+                    
+                    # Keep the standard backup name pointing to latest
+                    if os.path.exists(backup_file):
+                        os.remove(backup_file)
+                    os.link(timestamp_backup, backup_file)
+                    
                 except Exception as backup_error:
                     self.logger.warning(f"Failed to create backup: {backup_error}")
             
-            # Write new cache
+            # Step 2: Write new cache to temporary file
             with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(cache_copy, f, ensure_ascii=False, separators=(',', ':'))
             
-            # Atomic move
+            # Step 3: Verify the temporary file was written correctly
+            try:
+                with open(temp_file, 'r', encoding='utf-8') as f:
+                    verification_data = json.load(f)
+                if len(verification_data) != len(cache_copy):
+                    raise ValueError(f"Verification failed: expected {len(cache_copy)} entries, got {len(verification_data)}")
+            except Exception as verify_error:
+                self.logger.error(f"Cache file verification failed: {verify_error}")
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                raise
+            
+            # Step 4: Atomic move to final location
             os.replace(temp_file, self.cache_file)
             
-            # Remove backup if successful
-            if os.path.exists(backup_file):
-                try:
-                    os.remove(backup_file)
-                except Exception:
-                    pass  # Keep backup if removal fails
-            
-            self.logger.debug(f"Cache saved successfully: {len(cache_copy)} entries")
+            # Step 5: Verify final file
+            file_size = os.path.getsize(self.cache_file)
+            self.logger.info(f"Cache saved successfully: {cleaned_count} entries, {file_size/1024/1024:.1f}MB")
             
         except Exception as e:
             self.logger.error(f"Failed to save cache: {e}")
-            # Try to restore backup
+            # Try to restore backup if something went wrong
             backup_file = f"{self.cache_file}.backup"
-            if os.path.exists(backup_file):
+            if os.path.exists(backup_file) and not os.path.exists(self.cache_file):
                 try:
                     os.replace(backup_file, self.cache_file)
-                    self.logger.info("Restored cache from backup")
+                    self.logger.info("Restored cache from backup after save failure")
                 except Exception as restore_error:
                     self.logger.error(f"Failed to restore backup: {restore_error}")
-                
+                        
     def save(self):
         """Explicitly save cache."""
         self._save_cache()
     
     def _load_cache(self) -> Dict:
-        """Load existing cache with cleanup."""
-        if not os.path.exists(self.cache_file):
-            return {}
+        """
+        Enhanced cache loading with automatic recovery from .tmp and .backup files.
+        This ensures we can recover cache data even if the process was interrupted.
+        """
+        cache_files_to_try = [
+            (self.cache_file, "main cache file"),
+            (f"{self.cache_file}.tmp", "temporary cache file (.tmp)"),
+            (f"{self.cache_file}.backup", "backup cache file (.backup)")
+        ]
         
-        try:
-            with open(self.cache_file, 'r', encoding='utf-8') as f:
-                cache_data = json.load(f)
-            
-            # Clean expired entries
-            cutoff_date = datetime.now() - timedelta(days=self.duration_days)
-            cleaned_cache = {}
-            
-            for key, value in cache_data.items():
-                if isinstance(value, dict) and 'timestamp' in value:
-                    try:
-                        entry_date = datetime.fromisoformat(value['timestamp'])
-                        if entry_date > cutoff_date:
-                            cleaned_cache[key] = value
-                    except (ValueError, TypeError):
+        loaded_cache = {}
+        source_info = "none"
+        
+        # Try loading from available cache files in order of preference
+        for cache_path, description in cache_files_to_try:
+            if os.path.exists(cache_path):
+                try:
+                    self.logger.info(f"Attempting to load cache from {description}: {cache_path}")
+                    
+                    with open(cache_path, 'r', encoding='utf-8') as f:
+                        cache_data = json.load(f)
+                    
+                    if not cache_data:
+                        self.logger.warning(f"Cache file {cache_path} is empty, trying next option")
                         continue
+                    
+                    # Clean expired entries
+                    cutoff_date = datetime.now() - timedelta(days=self.duration_days)
+                    cleaned_cache = {}
+                    total_entries = len(cache_data)
+                    expired_count = 0
+                    
+                    for key, value in cache_data.items():
+                        if isinstance(value, dict) and 'timestamp' in value:
+                            try:
+                                entry_date = datetime.fromisoformat(value['timestamp'])
+                                if entry_date > cutoff_date:
+                                    cleaned_cache[key] = value
+                                else:
+                                    expired_count += 1
+                            except (ValueError, TypeError):
+                                # Skip invalid entries
+                                expired_count += 1
+                                continue
+                        else:
+                            # Skip entries without proper structure
+                            expired_count += 1
+                    
+                    valid_entries = len(cleaned_cache)
+                    self.logger.info(f"Successfully loaded cache from {description}")
+                    self.logger.info(f"Cache stats: {total_entries} total, {valid_entries} valid, {expired_count} expired/invalid")
+                    
+                    # If we loaded from .tmp or .backup, save it as the main file
+                    if cache_path != self.cache_file and cleaned_cache:
+                        try:
+                            self.logger.info(f"Recovering cache: saving {valid_entries} entries to main cache file")
+                            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                                json.dump(cleaned_cache, f, ensure_ascii=False, separators=(',', ':'))
+                            self.logger.info("Cache recovery completed successfully")
+                            
+                            # Clean up .tmp file if we loaded from it
+                            if cache_path.endswith('.tmp'):
+                                try:
+                                    os.remove(cache_path)
+                                    self.logger.info("Cleaned up temporary cache file")
+                                except Exception as cleanup_error:
+                                    self.logger.warning(f"Could not clean up .tmp file: {cleanup_error}")
+                                    
+                        except Exception as save_error:
+                            self.logger.error(f"Failed to save recovered cache: {save_error}")
+                            # Continue anyway with the loaded cache
+                    
+                    loaded_cache = cleaned_cache
+                    source_info = description
+                    break
+                    
+                except json.JSONDecodeError as json_error:
+                    self.logger.error(f"Invalid JSON in {description} ({cache_path}): {json_error}")
+                    continue
+                except Exception as e:
+                    self.logger.error(f"Failed to load {description} ({cache_path}): {e}")
+                    continue
+        
+        if loaded_cache:
+            self.logger.info(f"Cache initialization completed: loaded {len(loaded_cache)} entries from {source_info}")
+        else:
+            self.logger.info("No valid cache files found - starting with empty cache")
             
-            return cleaned_cache
-            
-        except Exception as e:
-            self.logger.warning(f"Failed to load cache: {e}")
-            return {}
-    
+        return loaded_cache  
     
 class OptimizedLLMClassificationManager:
     """Enhanced LLM Classification Manager with unique value processing."""
