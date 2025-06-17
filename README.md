@@ -19,59 +19,142 @@ cd Text-Classification-System
 ### 1. Create and activate a virtual environment
 ```bash
 python3 -m venv venv
-source venv/bin/activate    # On Windows use: venv\Scripts\activate
+
+# On Mac/Linux:
+source venv/bin/activate
+
+# On Windows:
+venv\Scripts\activate
 ```
 
-### 2. Run the setup script
-```bash
-python setup.py
-```
-This command creates the basic folders, a sample `config.yaml` and an `.env`
-file.
-
-### 3. Install dependencies
+### 2. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Add your OpenAI key
-Edit `.env` and set:
+### 3. Set up your OpenAI API key
+
+**Step 3.1: Get your API key**
+- Visit: https://platform.openai.com/api-keys
+- Create a new API key
+- Copy the key (starts with `sk-`)
+
+**Step 3.2: Create a .env file**
 ```bash
-OPENAI_API_KEY=sk-your-key-here
+# Create .env file in the project root
+echo "OPENAI_API_KEY=sk-your-actual-key-here" > .env
 ```
 
-### 5. Configure the classification
-Open `config.yaml` to tell the system how it should label your text.  A
-**perspective** is a set of rules for one classification task.  You can define
-several perspectives in the file and run them all at once.
+**Step 3.3: Load the environment variables (Choose the method for your system)**
 
-**AI classification with ChatGPT**
-- Set `type: "openai_classification"`.
-- List the `columns` you want to classify and the `target_categories` you expect
-  (e.g. job titles, product types, etc.).
-- Optionally tweak the `classification_config` section to change the prompt or
-  batch size.
+**Option A: Install python-dotenv (Recommended - Works on all platforms)**
+```bash
+pip install python-dotenv
+```
+*The system will automatically load your .env file when running the classifier.*
 
-**Traditional clustering**
-- Set `type: "clustering"` and choose an `algorithm` such as `hdbscan` or
-  `kmeans`.
-- Provide algorithm parameters under `params` if needed.
-- Use this when you do not have predefined categories and want to discover
-  groups automatically.
+**Option B: Load manually (Mac/Linux)**
+```bash
+# Method 1: Using export
+export $(grep -v '^#' .env | xargs)
 
-**Hybrid approach**
-- Mix both AI and clustering perspectives in the same file.
-- Useful for comparing the results and refining your categories.
+# Method 2: Using source (edit .env to add 'export' first)
+# Edit your .env file to: export OPENAI_API_KEY=sk-your-actual-key-here
+source .env
+```
 
-Remember to update `input_file`, `output_file`, `text_columns` and any category
-lists or algorithm settings relevant to your use case.
+**Option C: Load manually (Windows)**
+```cmd
+# Command Prompt
+set OPENAI_API_KEY=sk-your-actual-key-here
+
+# PowerShell
+$env:OPENAI_API_KEY="sk-your-actual-key-here"
+```
+
+**⚠️ Important:** Replace `sk-your-actual-key-here` with your real OpenAI API key.
+
+### 4. Configure your classification (Choose one option)
+
+**Option A: Web Interface (Recommended for beginners)**
+- Visit: https://text-classification-config.streamlit.app
+- Upload your data and configure your classification settings through the web interface
+- Download the generated `config.yaml` file to your project folder
+
+**Option B: Local Web Interface**
+```bash
+streamlit run app.py
+```
+Then open your browser to `http://localhost:8501` to configure your settings locally.
+
+**Option C: Manual Configuration**
+- Copy and edit the sample `config.yaml` file in the repository
+- Configure your input/output files, text columns, and classification perspectives
+
+### 5. Prepare your classification settings
+
+The system supports two main approaches:
+
+**AI Classification with ChatGPT**
+- Set `type: "openai_classification"`
+- Define your `target_categories` (e.g., job titles, product types, sentiment)
+- Specify which `columns` to classify
+- Perfect for when you know what categories you want
+
+**Traditional Clustering**
+- Set `type: "clustering"`
+- Choose an `algorithm` such as `hdbscan` or `kmeans`
+- Use this to discover hidden patterns in your data
+- Great for exploratory analysis when you don't know the categories beforehand
 
 ### 6. Run the classifier
 ```bash
 python main.py --config config.yaml
 ```
 
-Your classified data will be saved in the `output/` folder.
+Your results will be automatically saved in the `output/` folder. The system creates all necessary folders automatically based on your configuration.
+
+### 🔍 Verification
+
+To verify everything is working correctly:
+
+1. **Check your API key is loaded:**
+   ```bash
+   # Mac/Linux
+   echo $OPENAI_API_KEY
+   
+   # Windows Command Prompt
+   echo %OPENAI_API_KEY%
+   
+   # Windows PowerShell
+   echo $env:OPENAI_API_KEY
+   ```
+
+2. **Test with a small dataset first** to ensure everything works before processing large files.
+
+### 💡 Tips
+
+- **For beginners:** Use the web interface (Option A) to generate your configuration
+- **For advanced users:** Edit the `config.yaml` file directly for more control
+- **Multiple perspectives:** You can define both AI and clustering approaches in the same configuration file to compare results
+- **Large datasets:** The system supports processing large files efficiently using Spark
+- **Resumable processing:** If interrupted, the system can resume from checkpoints
+
+### 🆘 Troubleshooting
+
+**API Key Issues:**
+- Ensure your API key starts with `sk-`
+- Check that the environment variable is set correctly
+- Verify you have sufficient OpenAI API credits
+
+**Import Errors:**
+- Make sure you activated your virtual environment
+- Try reinstalling dependencies: `pip install -r requirements.txt`
+
+**Configuration Issues:**
+- Use the web interface to generate a valid configuration
+- Check that your input file path is correct
+- Ensure your text columns exist in your dataset
 
 ---
 
