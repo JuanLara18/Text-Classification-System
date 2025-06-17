@@ -599,7 +599,19 @@ class ClassificationCache:
         self.duration_days = duration_days
         self.cache_file = os.path.join(cache_dir, "classification_cache.json")
         
-        os.makedirs(cache_dir, exist_ok=True)
+        # IMPROVEMENT 1: More robust directory creation with permissions check
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            # Test write permissions immediately
+            test_file = os.path.join(cache_dir, ".write_test")
+            with open(test_file, 'w') as f:
+                f.write("test")
+            os.remove(test_file)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Cannot create or write to cache directory {cache_dir}: {e}")
+            raise RuntimeError(f"Cache directory not accessible: {cache_dir}")
         
         self.memory_cache = OrderedDict()
         self.max_memory_cache = 10000
@@ -629,7 +641,7 @@ class ClassificationCache:
         self._last_save = time.time()
         
         self.logger.info(f"ClassificationCache ready: {len(self.cache)} entries loaded, continuing with existing files")
-    
+
     def _generate_key(self, text: str, categories: List[str], model: str, prompt: str) -> str:
         """Fixed: Generate consistent cache key including all parameters."""
         if not text or not categories:
@@ -702,10 +714,10 @@ class ClassificationCache:
         except Exception as e:
             self.logger.warning(f"Cache get operation failed: {e}")
             return None
-
+        
     def set(self, text: str, categories: List[str], model: str, prompt: str, classification: str):
         """
-        SIMPLE: Add to cache, save only when really needed.
+        MINIMAL CHANGE: Only improve save frequency, keep everything else identical.
         """
         if not text or not text.strip() or not classification:
             return
@@ -730,11 +742,11 @@ class ClassificationCache:
                 }
                 self._unsaved_changes += 1
                 
-                # MUCH less frequent saves - only save every 10 minutes or 2000 changes
+                # CHANGE 1: More frequent saves (reduced from 10 min/2000 to 3 min/1000)
                 current_time = time.time()
                 should_save = (
-                    self._unsaved_changes >= 2000 or  
-                    current_time - self._last_save > 600  # 10 minutes
+                    self._unsaved_changes >= 1000 or  # Reduced from 2000 to 1000
+                    current_time - self._last_save > 180  # 3 minutes instead of 10
                 )
                 
                 if should_save:
@@ -742,7 +754,7 @@ class ClassificationCache:
                     
         except Exception as e:
             self.logger.warning(f"Cache set operation failed: {e}")
-        
+          
     def _add_to_memory_cache(self, key: str, value: str):
         """
         Enhanced memory cache management with improved LRU and thread safety.
@@ -771,36 +783,34 @@ class ClassificationCache:
 
     def _save_cache(self):
         """
-        SIMPLE: Just continue using the same file pattern that already works.
-        No excessive backups, no timestamped files.
+        CRITICAL FIX: Prevent data loss without changing file structure.
         """
         if not self.cache:
             return
 
         try:
+            # CHANGE 2: Create cleaned copy WITHOUT modifying original cache during process
+            current_time = datetime.now()
+            cutoff_time = current_time - timedelta(days=self.duration_days)
+            
+            # Clean expired entries in a copy, NOT in the original
+            cleaned_cache = {}
             with self._cache_lock:
-                # Clean expired entries
-                cache_copy = {}
-                current_time = datetime.now()
-                cutoff_time = current_time - timedelta(days=self.duration_days)
-                
                 for key, entry in self.cache.items():
                     if isinstance(entry, dict) and 'timestamp' in entry:
                         try:
                             entry_date = datetime.fromisoformat(entry['timestamp'])
                             if entry_date > cutoff_time:
-                                cache_copy[key] = entry
+                                cleaned_cache[key] = entry
                         except (ValueError, TypeError):
                             continue
-                
-                # Update internal cache
-                self.cache = cache_copy
-                self._unsaved_changes = 0
-                self._last_save = time.time()
 
-            # SIMPLE atomic write - same pattern as before
+            # IMPROVEMENT 2: Ensure temp directory exists before writing
             temp_file = f"{self.cache_file}.tmp"
             backup_file = f"{self.cache_file}.backup"
+            
+            # Ensure the directory exists (in case it was deleted)
+            os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
             
             # Simple backup rotation: keep only ONE backup
             if os.path.exists(self.cache_file):
@@ -808,19 +818,41 @@ class ClassificationCache:
                     os.remove(backup_file)
                 os.replace(self.cache_file, backup_file)
             
-            # Write to temp
-            with open(temp_file, 'w', encoding='utf-8') as f:
-                json.dump(cache_copy, f, ensure_ascii=False, separators=(',', ':'))
+            # Write to temp with better error context
+            try:
+                with open(temp_file, 'w', encoding='utf-8') as f:
+                    json.dump(cleaned_cache, f, ensure_ascii=False, separators=(',', ':'))
+            except Exception as write_error:
+                self.logger.error(f"Failed to write temp cache file {temp_file}: {write_error}")
+                raise
+            
+            # IMPROVEMENT 3: Verify file was written correctly before atomic move
+            if not os.path.exists(temp_file) or os.path.getsize(temp_file) == 0:
+                raise RuntimeError(f"Temp cache file {temp_file} was not created properly")
             
             # Atomic move
             os.replace(temp_file, self.cache_file)
             
+            # CHANGE 3: Only update self.cache AFTER successful save
+            with self._cache_lock:
+                self.cache = cleaned_cache  # Now safe to update
+                self._unsaved_changes = 0
+                self._last_save = time.time()
+            
             file_size = os.path.getsize(self.cache_file)
-            self.logger.info(f"Cache saved: {len(cache_copy)} entries, {file_size/1024/1024:.1f}MB")
+            self.logger.info(f"Cache saved: {len(cleaned_cache)} entries, {file_size/1024/1024:.1f}MB")
             
         except Exception as e:
             self.logger.error(f"Failed to save cache: {e}")
-                         
+            # IMPROVEMENT 4: Clean up temp file on failure
+            temp_file = f"{self.cache_file}.tmp"
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+            # IMPORTANT: Don't update self.cache on failure to preserve data
+                                   
     def save(self):
         """Explicitly save cache."""
         self._save_cache()
@@ -916,6 +948,51 @@ class ClassificationCache:
             
         return loaded_cache  
     
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get detailed cache statistics for monitoring."""
+        with self._cache_lock:
+            total_entries = len(self.cache)
+            memory_entries = len(self.memory_cache)
+            unsaved_changes = self._unsaved_changes
+            
+            # Calculate cache age distribution
+            if self.cache:
+                current_time = datetime.now()
+                ages = []
+                for entry in self.cache.values():
+                    if isinstance(entry, dict) and 'timestamp' in entry:
+                        try:
+                            entry_date = datetime.fromisoformat(entry['timestamp'])
+                            age_hours = (current_time - entry_date).total_seconds() / 3600
+                            ages.append(age_hours)
+                        except (ValueError, TypeError):
+                            continue
+                
+                if ages:
+                    avg_age_hours = sum(ages) / len(ages)
+                    max_age_hours = max(ages)
+                    min_age_hours = min(ages)
+                else:
+                    avg_age_hours = max_age_hours = min_age_hours = 0
+            else:
+                avg_age_hours = max_age_hours = min_age_hours = 0
+            
+            file_size_mb = 0
+            if os.path.exists(self.cache_file):
+                file_size_mb = os.path.getsize(self.cache_file) / 1024 / 1024
+            
+            return {
+                'total_disk_entries': total_entries,
+                'memory_cache_entries': memory_entries,
+                'unsaved_changes': unsaved_changes,
+                'cache_file_size_mb': round(file_size_mb, 2),
+                'avg_entry_age_hours': round(avg_age_hours, 2),
+                'max_entry_age_hours': round(max_age_hours, 2),
+                'min_entry_age_hours': round(min_age_hours, 2),
+                'last_save_ago_seconds': round(time.time() - self._last_save, 1),
+                'cache_file_exists': os.path.exists(self.cache_file)
+            }
+                
 class OptimizedLLMClassificationManager:
     """Enhanced LLM Classification Manager with unique value processing."""
     
