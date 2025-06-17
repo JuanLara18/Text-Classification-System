@@ -283,12 +283,20 @@ def create_help_expander(title, content):
         st.markdown(content)
 
 def validate_file_path(path, extension=None):
-    """Validate file path format (not existence since this is web-based)"""
+    """Validate file path"""
     if not path:
         return False, "File path is required"
     
     if extension and not path.endswith(extension):
         return False, f"File must have {extension} extension"
+    
+    # Check if directory exists for output files
+    directory = os.path.dirname(path)
+    if directory and not os.path.exists(directory):
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except:
+            return False, f"Cannot create directory: {directory}"
     
     return True, ""
 
@@ -532,24 +540,34 @@ def show_configuration_page():
         
         if input_file:
             st.session_state.config['input_file'] = input_file
-        
-        # Manual text columns input since we can't inspect the file
-        st.subheader("Text Columns")
-        text_columns_input = st.text_input(
-            "Text column names (comma-separated)",
-            value=', '.join(st.session_state.config.get('text_columns', [])),
-            placeholder="e.g., description, comments, feedback, title",
-            help="Enter the names of columns that contain text to classify, separated by commas"
-        )
-        
-        if text_columns_input:
-            text_columns = [col.strip() for col in text_columns_input.split(',') if col.strip()]
-            st.session_state.config['text_columns'] = text_columns
             
-            if text_columns:
-                st.success(f"✅ {len(text_columns)} text columns configured: {', '.join(text_columns)}")
-        else:
-            st.session_state.config['text_columns'] = []
+            # Try to load file info if file exists
+            if os.path.exists(input_file):
+                try:
+                    sample_df, columns = load_sample_data_info(input_file)
+                    
+                    if sample_df is not None:
+                        st.success(f"✅ File loaded: {len(sample_df)} rows shown, {len(columns)} columns total")
+                        
+                        # Show column selection
+                        st.subheader("Text Columns")
+                        text_columns = st.multiselect(
+                            "Select columns containing text to classify",
+                            options=columns,
+                            default=st.session_state.config.get('text_columns', []),
+                            help="Choose one or more columns that contain the text you want to classify"
+                        )
+                        st.session_state.config['text_columns'] = text_columns
+                        
+                        # Show sample data
+                        with st.expander("📊 Preview Data"):
+                            st.dataframe(sample_df)
+                    else:
+                        st.error(f"❌ Error loading file: {columns}")
+                except Exception as e:
+                    st.error(f"❌ Error accessing file: {str(e)}")
+            else:
+                st.warning(f"⚠️ File does not exist: {input_file}")
     
     with col2:
         st.subheader("Output Configuration")
@@ -838,7 +856,7 @@ def show_perspective_form(perspective_type, perspective_name=None, existing_conf
                 )
             else:
                 columns = []
-                st.warning("⚠️ Please configure text columns in the Configuration section first")
+                st.warning("⚠️ Please configure text columns in the File Configuration section first")
         
         with col2:
             output_column = st.text_input(
@@ -1413,15 +1431,17 @@ def validate_configuration():
     issues = []
     config = st.session_state.config
     
-    # Basic configuration validation (not file existence since this is web-based)
+    # Basic file validation
     if not config.get('input_file'):
         issues.append("Input file path is required")
+    elif not os.path.exists(config['input_file']):
+        issues.append(f"Input file does not exist: {config['input_file']}")
     
     if not config.get('output_file'):
         issues.append("Output file path is required")
     
     if not config.get('text_columns'):
-        issues.append("At least one text column must be specified")
+        issues.append("At least one text column must be selected")
     
     # Perspectives validation
     perspectives = config.get('clustering_perspectives', {})
@@ -1431,9 +1451,13 @@ def validate_configuration():
     # AI classification specific validation
     ai_perspectives = [p for p in perspectives.values() if p.get('type') == 'openai_classification']
     if ai_perspectives:
-        # Note: In web environment, we can't check environment variables
-        # This is just a reminder for the user
-        st.info("💡 Remember to set your OPENAI_API_KEY environment variable when running the classification")
+        # Check for OpenAI API key
+        api_key_env = 'OPENAI_API_KEY'  # Default
+        if ai_perspectives:
+            api_key_env = ai_perspectives[0].get('llm_config', {}).get('api_key_env', 'OPENAI_API_KEY')
+        
+        if not os.environ.get(api_key_env):
+            issues.append(f"OpenAI API key not found in environment variable: {api_key_env}")
     
     return {
         'valid': len(issues) == 0,
