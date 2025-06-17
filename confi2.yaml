@@ -242,68 +242,68 @@ clustering_perspectives:
 
         Category only:
 
-  # Expert Definition: 20-Category Granular
-  bmw_errors_expert_20groups:
-    type: "openai_classification"
-    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
-    target_categories:
-      - "Assembly Defects"
-      - "Tool Wear"
-      - "Material Defects"
-      - "Machine Setup Errors"
-      - "Contamination"
-      - "Welding Porosity"
-      - "Calibration Errors"
-      - "Incomplete Weld Penetration"
-      - "Documentation Errors"
-      - "Weld Cracking"
-      - "Bolt Overtightening"
-      - "Bolt Undertightening"
-      - "Missing Fasteners"
-      - "Paint Texture Defects"
-      - "Paint Run Defects"
-      - "Coating Adhesion Defects"
-      - "Surface Roughness Errors"
-      - "Stamping Dimensional Errors"
-      - "Handling Damage"
-      - "Foreign Object Inclusion"
-      - "Other"
-      - "Unknown"
-    output_column: "bmw_error_expert_20groups"
-    
-    llm_config:
-      provider: "openai"
-      model: "gpt-3.5-turbo-0125"
-      temperature: 0.0
-      max_tokens: 25
-      api_key_env: "OPENAI_API_KEY"
-    
-    classification_config:
-      batch_size: 40
-      unknown_category: "Unknown"
-      prompt_template: |
-        Classify BMW error using granular 20-group expert categories:
-
-        Assembly: "Assembly Defects"
-        Tools: "Tool Wear"
-        Materials: "Material Defects"
-        Setup: "Machine Setup Errors"
-        Cleanliness: "Contamination"
-        Weld Quality: "Welding Porosity", "Incomplete Weld Penetration", "Weld Cracking"
-        Calibration: "Calibration Errors"
-        Documentation: "Documentation Errors"
-        Fasteners: "Bolt Overtightening", "Bolt Undertightening", "Missing Fasteners"
-        Paint: "Paint Texture Defects", "Paint Run Defects", "Coating Adhesion Defects"
-        Surface: "Surface Roughness Errors"
-        Forming: "Stamping Dimensional Errors"
-        Handling: "Handling Damage"
-        Foreign Objects: "Foreign Object Inclusion"
-        Other: "Other"
-        Unknown: "Unknown"
-
-        ERROR: {text}
-
-        Category only:
+#  # Expert Definition: 20-Category Granular
+#  bmw_errors_expert_20groups:
+#    type: "openai_classification"
+#    columns: ["CauseDescription_EN", "CauseLongText_EN", "TechnicalObjectDescription_EN", "DamagePatternLongText_EN", "ShortDescription", "Description"]
+#    target_categories:
+#      - "Assembly Defects"
+#      - "Tool Wear"
+#      - "Material Defects"
+#      - "Machine Setup Errors"
+#      - "Contamination"
+#      - "Welding Porosity"
+#      - "Calibration Errors"
+#      - "Incomplete Weld Penetration"
+#      - "Documentation Errors"
+#      - "Weld Cracking"
+#      - "Bolt Overtightening"
+#      - "Bolt Undertightening"
+#      - "Missing Fasteners"
+#      - "Paint Texture Defects"
+#      - "Paint Run Defects"
+#      - "Coating Adhesion Defects"
+#      - "Surface Roughness Errors"
+#      - "Stamping Dimensional Errors"
+#      - "Handling Damage"
+#      - "Foreign Object Inclusion"
+#      - "Other"
+#      - "Unknown"
+#    output_column: "bmw_error_expert_20groups"
+#    
+#    llm_config:
+#      provider: "openai"
+#      model: "gpt-3.5-turbo-0125"
+#      temperature: 0.0
+#      max_tokens: 25
+#      api_key_env: "OPENAI_API_KEY"
+#    
+#    classification_config:
+#      batch_size: 40
+#      unknown_category: "Unknown"
+#      prompt_template: |
+#        Classify BMW error using granular 20-group expert categories:
+#
+#        Assembly: "Assembly Defects"
+#        Tools: "Tool Wear"
+#        Materials: "Material Defects"
+#        Setup: "Machine Setup Errors"
+#        Cleanliness: "Contamination"
+#        Weld Quality: "Welding Porosity", "Incomplete Weld Penetration", "Weld Cracking"
+#        Calibration: "Calibration Errors"
+#        Documentation: "Documentation Errors"
+#        Fasteners: "Bolt Overtightening", "Bolt Undertightening", "Missing Fasteners"
+#        Paint: "Paint Texture Defects", "Paint Run Defects", "Coating Adhesion Defects"
+#        Surface: "Surface Roughness Errors"
+#        Forming: "Stamping Dimensional Errors"
+#        Handling: "Handling Damage"
+#        Foreign Objects: "Foreign Object Inclusion"
+#        Other: "Other"
+#        Unknown: "Unknown"
+#
+#        ERROR: {text}
+#
+ #       Category only:
 
   # =============================================================================
   # GPT DATA ANALYSIS BASED CLASSIFICATIONS (4 perspectives)
