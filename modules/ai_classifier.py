@@ -586,18 +586,7 @@ class ClassificationCache:
         self.duration_days = duration_days
         self.cache_file = os.path.join(cache_dir, "classification_cache.json")
         
-        # IMPROVEMENT 1: More robust directory creation with permissions check
-        try:
-            os.makedirs(cache_dir, exist_ok=True)
-            # Test write permissions immediately
-            test_file = os.path.join(cache_dir, ".write_test")
-            with open(test_file, 'w') as f:
-                f.write("test")
-            os.remove(test_file)
-        except Exception as e:
-            logger = logging.getLogger(__name__)
-            logger.error(f"Cannot create or write to cache directory {cache_dir}: {e}")
-            raise RuntimeError(f"Cache directory not accessible: {cache_dir}")
+        os.makedirs(cache_dir, exist_ok=True)
         
         self.memory_cache = OrderedDict()
         self.max_memory_cache = 10000
@@ -627,7 +616,7 @@ class ClassificationCache:
         self._last_save = time.time()
         
         self.logger.info(f"ClassificationCache ready: {len(self.cache)} entries loaded, continuing with existing files")
-
+    
     def _generate_key(self, text: str, categories: List[str], model: str, prompt: str) -> str:
         """Fixed: Generate consistent cache key including all parameters."""
         if not text or not categories:
@@ -700,7 +689,7 @@ class ClassificationCache:
         except Exception as e:
             self.logger.warning(f"Cache get operation failed: {e}")
             return None
-        
+
     def set(self, text: str, categories: List[str], model: str, prompt: str, classification: str):
         """
         MINIMAL CHANGE: Only improve save frequency, keep everything else identical.
@@ -791,12 +780,9 @@ class ClassificationCache:
                         except (ValueError, TypeError):
                             continue
 
-            # IMPROVEMENT 2: Ensure temp directory exists before writing
+            # KEEP: Same atomic save pattern
             temp_file = f"{self.cache_file}.tmp"
             backup_file = f"{self.cache_file}.backup"
-            
-            # Ensure the directory exists (in case it was deleted)
-            os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
             
             # Simple backup rotation: keep only ONE backup
             if os.path.exists(self.cache_file):
@@ -804,17 +790,9 @@ class ClassificationCache:
                     os.remove(backup_file)
                 os.replace(self.cache_file, backup_file)
             
-            # Write to temp with better error context
-            try:
-                with open(temp_file, 'w', encoding='utf-8') as f:
-                    json.dump(cleaned_cache, f, ensure_ascii=False, separators=(',', ':'))
-            except Exception as write_error:
-                self.logger.error(f"Failed to write temp cache file {temp_file}: {write_error}")
-                raise
-            
-            # IMPROVEMENT 3: Verify file was written correctly before atomic move
-            if not os.path.exists(temp_file) or os.path.getsize(temp_file) == 0:
-                raise RuntimeError(f"Temp cache file {temp_file} was not created properly")
+            # Write to temp
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(cleaned_cache, f, ensure_ascii=False, separators=(',', ':'))
             
             # Atomic move
             os.replace(temp_file, self.cache_file)
@@ -830,15 +808,8 @@ class ClassificationCache:
             
         except Exception as e:
             self.logger.error(f"Failed to save cache: {e}")
-            # IMPROVEMENT 4: Clean up temp file on failure
-            temp_file = f"{self.cache_file}.tmp"
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except Exception:
-                    pass
             # IMPORTANT: Don't update self.cache on failure to preserve data
-                                   
+                           
     def save(self):
         """Explicitly save cache."""
         self._save_cache()
@@ -933,52 +904,7 @@ class ClassificationCache:
             self.logger.info("No valid cache files found - starting with empty cache")
             
         return loaded_cache  
-    
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """Get detailed cache statistics for monitoring."""
-        with self._cache_lock:
-            total_entries = len(self.cache)
-            memory_entries = len(self.memory_cache)
-            unsaved_changes = self._unsaved_changes
-            
-            # Calculate cache age distribution
-            if self.cache:
-                current_time = datetime.now()
-                ages = []
-                for entry in self.cache.values():
-                    if isinstance(entry, dict) and 'timestamp' in entry:
-                        try:
-                            entry_date = datetime.fromisoformat(entry['timestamp'])
-                            age_hours = (current_time - entry_date).total_seconds() / 3600
-                            ages.append(age_hours)
-                        except (ValueError, TypeError):
-                            continue
-                
-                if ages:
-                    avg_age_hours = sum(ages) / len(ages)
-                    max_age_hours = max(ages)
-                    min_age_hours = min(ages)
-                else:
-                    avg_age_hours = max_age_hours = min_age_hours = 0
-            else:
-                avg_age_hours = max_age_hours = min_age_hours = 0
-            
-            file_size_mb = 0
-            if os.path.exists(self.cache_file):
-                file_size_mb = os.path.getsize(self.cache_file) / 1024 / 1024
-            
-            return {
-                'total_disk_entries': total_entries,
-                'memory_cache_entries': memory_entries,
-                'unsaved_changes': unsaved_changes,
-                'cache_file_size_mb': round(file_size_mb, 2),
-                'avg_entry_age_hours': round(avg_age_hours, 2),
-                'max_entry_age_hours': round(max_age_hours, 2),
-                'min_entry_age_hours': round(min_age_hours, 2),
-                'last_save_ago_seconds': round(time.time() - self._last_save, 1),
-                'cache_file_exists': os.path.exists(self.cache_file)
-            }
-                
+                  
 class OptimizedLLMClassificationManager:
     """Enhanced LLM Classification Manager with unique value processing."""
     
