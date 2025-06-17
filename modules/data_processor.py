@@ -308,7 +308,6 @@ class TextPreprocessor:
         
         # Initialize logger (use a default if none provided)
         if logger is None:
-            import logging
             self.logger = logging.getLogger('text_preprocessor')
             self.logger.setLevel(logging.WARNING)
             if not self.logger.handlers:
