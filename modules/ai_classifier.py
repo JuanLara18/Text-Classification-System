@@ -17,6 +17,9 @@ import openai
 import tiktoken
 import threading
 
+import json
+from collections import OrderedDict
+
 import concurrent.futures
 import threading
 
@@ -570,23 +573,7 @@ Answer with the category name ONLY."""
         }
 
 
-import os
-import json
-import hashlib
-import threading
-import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
 
-
-import os
-import json
-import hashlib
-import threading
-import time
-from collections import OrderedDict
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
 
 class ClassificationCache:
     """Fixed caching system for AI classification results."""
@@ -608,7 +595,6 @@ class ClassificationCache:
                 f.write("test")
             os.remove(test_file)
         except Exception as e:
-            import logging
             logger = logging.getLogger(__name__)
             logger.error(f"Cannot create or write to cache directory {cache_dir}: {e}")
             raise RuntimeError(f"Cache directory not accessible: {cache_dir}")
