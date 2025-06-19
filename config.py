@@ -693,8 +693,8 @@ class ConfigManager:
         # Validate rate limiting
         rate_config = ai_config.get('rate_limiting', {})
         requests_per_minute = rate_config.get('requests_per_minute', 100)
-        if not (1 <= requests_per_minute <= 1000):
-            raise ConfigurationError("ai_classification.rate_limiting.requests_per_minute must be between 1 and 1000")
+        if not (1 <= requests_per_minute <= 2000):
+            raise ConfigurationError("ai_classification.rate_limiting.requests_per_minute must be between 1 and 2000")
         
         # Validate caching directory
         cache_config = ai_config.get('caching', {})
