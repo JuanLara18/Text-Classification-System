@@ -341,7 +341,8 @@ class TextPreprocessor:
         
     def preprocess_text(self, text):
         """
-        Preprocesses a text string with enhanced error handling.
+        Preprocesses a text string with enhanced error handling and content preservation.
+        Less aggressive preprocessing to maintain more useful content for classification.
 
         Args:
             text: Text to preprocess
@@ -349,11 +350,17 @@ class TextPreprocessor:
         Returns:
             Preprocessed text as a string
         """
-        # Handle None/NaN values
         if text is None or pd.isna(text) or not isinstance(text, str):
             return ""
         
         try:
+            # Store original text for fallback
+            original_text = str(text).strip()
+            
+            # Skip preprocessing for very short texts to avoid losing content
+            if len(original_text) <= 3:
+                return original_text.lower() if self.preprocessing_options.get('lowercase', True) else original_text
+            
             # Truncate text if it's too long
             if self.max_length > 0 and len(text) > self.max_length:
                 text = text[:self.max_length]
@@ -375,15 +382,16 @@ class TextPreprocessor:
             # Simple whitespace tokenization
             tokens = text.split()
             
-            # Process each token
+            # Process each token with less aggressive filtering
             processed_tokens = []
             for token in tokens:
-                # Skip short words
-                if len(token) < self.min_word_length:
+                # Skip very short words (reduced threshold from previous version)
+                if len(token) < max(1, self.min_word_length - 1):
                     continue
                 
-                # Remove stopwords if enabled
-                if self.preprocessing_options.get('remove_stopwords', True) and token in self.stopwords:
+                # Remove stopwords if enabled, but keep if it's the only meaningful content
+                if (self.preprocessing_options.get('remove_stopwords', True) and 
+                    token in self.stopwords and len(tokens) > 2):
                     continue
                 
                 # Apply lemmatization if enabled
@@ -391,7 +399,6 @@ class TextPreprocessor:
                     try:
                         token = self.lemmatizer.lemmatize(token)
                     except Exception:
-                        # Keep original token if lemmatization fails
                         pass
                 
                 processed_tokens.append(token)
@@ -399,13 +406,27 @@ class TextPreprocessor:
             # Reconstruct text from tokens
             preprocessed_text = ' '.join(processed_tokens)
             
+            # Content preservation: if preprocessing resulted in empty string but original had content,
+            # return a minimal processed version instead of empty string
+            if not preprocessed_text.strip() and original_text.strip():
+                # Extract just alphanumeric content as fallback
+                fallback_text = re.sub(r'[^\w\s]', ' ', original_text)
+                fallback_text = ' '.join(fallback_text.split()[:5])  # Keep first 5 words max
+                if fallback_text.strip():
+                    preprocessed_text = fallback_text.lower() if self.preprocessing_options.get('lowercase', True) else fallback_text
+            
             return preprocessed_text
         
         except Exception as e:
-            # En caso de cualquier error, devolver una cadena vacía o texto original
+            # Fallback: return original text in lowercase if processing fails
             if hasattr(self, 'logger'):
                 self.logger.error(f"Error preprocessing text: {str(e)}")
-            return ""  # O podrías retornar el texto original: return text
+            
+            # Return original text with minimal processing as fallback
+            fallback = str(text).strip()
+            if self.preprocessing_options.get('lowercase', True):
+                fallback = fallback.lower()
+            return fallback
     
 class FeatureExtractor:
     """Feature extractor for texts."""
@@ -711,7 +732,6 @@ class FeatureExtractor:
             self.logger.error(f"Error reducing dimensionality: {str(e)}")
             raise RuntimeError(f"Failed to reduce dimensionality: {str(e)}")
 
-    
     def _get_cache_key(self, texts, feature_type):
         """
         Generates a cache key for a set of texts and feature type.
