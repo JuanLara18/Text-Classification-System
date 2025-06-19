@@ -731,35 +731,132 @@ class ClassificationPipeline:
     
     def _identify_missing_rows(self, dataframe, columns):
         """
-        Identify rows that have missing values in ANY of the specified columns.
+        Identify rows that have truly missing values (None, NaN, pd.NA) in any of the specified columns.
+        
+        Empty strings are not considered missing values, as they are often the result
+        of valid text preprocessing after removing stopwords, punctuation, URLs, etc.
+        Only truly null/undefined values are considered missing.
         
         Args:
             dataframe: DataFrame to check
             columns: List of column names to check for missing values
             
         Returns:
-            Boolean mask indicating which rows have missing values
+            Boolean mask indicating which rows have truly missing values
         """
         missing_mask = pd.Series(False, index=dataframe.index)
         
         for col in columns:
             if col in dataframe.columns:
-                # Check for various types of missing values
                 col_missing = (
-                    dataframe[col].isna() | 
-                    dataframe[col].isnull() |
-                    (dataframe[col] == '') |
-                    (dataframe[col] == 'nan') |
-                    (dataframe[col] == 'None')
+                    dataframe[col].isna() |           
+                    dataframe[col].isnull() |         
+                    (dataframe[col] is None) |        
+                    (dataframe[col] == pd.NA)         
                 )
                 missing_mask = missing_mask | col_missing
         
         return missing_mask
 
+    def _identify_completely_empty_rows(self, dataframe, columns):
+        """
+        Identify rows where all specified columns are either missing or empty strings.
+        This is useful for identifying rows that have no processable content at all.
+        
+        Args:
+            dataframe: DataFrame to check
+            columns: List of column names to check
+            
+        Returns:
+            Boolean mask indicating which rows have no processable content
+        """
+        empty_mask = pd.Series(True, index=dataframe.index)
+        
+        for col in columns:
+            if col in dataframe.columns:
+                col_has_content = (
+                    dataframe[col].notna() & 
+                    dataframe[col].notnull() & 
+                    (dataframe[col] != '') &
+                    (dataframe[col] != 'nan') &
+                    (dataframe[col] != 'None') &
+                    (dataframe[col] != pd.NA)
+                )
+                empty_mask = empty_mask & ~col_has_content
+        
+        return empty_mask
+
+    def _get_processable_rows_info(self, dataframe, columns):
+        """
+        Get comprehensive information about row processing status.
+        
+        Args:
+            dataframe: DataFrame to analyze
+            columns: List of column names to check
+            
+        Returns:
+            Dict with processing statistics and masks
+        """
+        truly_missing_mask = self._identify_missing_rows(dataframe, columns)
+        completely_empty_mask = self._identify_completely_empty_rows(dataframe, columns)
+        
+        processable_mask = ~completely_empty_mask
+        
+        stats = {
+            'total_rows': len(dataframe),
+            'truly_missing_count': truly_missing_mask.sum(),
+            'completely_empty_count': completely_empty_mask.sum(),
+            'processable_count': processable_mask.sum(),
+            'processable_percentage': (processable_mask.sum() / len(dataframe)) * 100 if len(dataframe) > 0 else 0,
+            'truly_missing_mask': truly_missing_mask,
+            'completely_empty_mask': completely_empty_mask,
+            'processable_mask': processable_mask
+        }
+        
+        return stats
+
+    def _validate_preprocessing_results(self, dataframe, text_columns):
+        """
+        Validate preprocessing results and provide insights about content distribution.
+        
+        Args:
+            dataframe: DataFrame with preprocessing results
+            text_columns: List of text column names to validate
+            
+        Returns:
+            Boolean indicating successful validation
+        """
+        self.logger.info("Validating preprocessing results...")
+        
+        for col in text_columns:
+            original_col = col
+            processed_col = f"{col}_preprocessed"
+            
+            if processed_col in dataframe.columns:
+                total_rows = len(dataframe)
+                original_nulls = dataframe[original_col].isna().sum()
+                processed_nulls = dataframe[processed_col].isna().sum()
+                processed_empty = (dataframe[processed_col] == '').sum()
+                processed_valid = total_rows - processed_nulls - processed_empty
+                
+                self.logger.info(f"Column '{col}' preprocessing results:")
+                self.logger.info(f"  Original nulls: {original_nulls:,} ({original_nulls/total_rows*100:.1f}%)")
+                self.logger.info(f"  Processed nulls: {processed_nulls:,} ({processed_nulls/total_rows*100:.1f}%)")
+                self.logger.info(f"  Processed empty strings: {processed_empty:,} ({processed_empty/total_rows*100:.1f}%)")
+                self.logger.info(f"  Processed valid content: {processed_valid:,} ({processed_valid/total_rows*100:.1f}%)")
+                
+                if processed_empty > 0:
+                    empty_examples = dataframe[dataframe[processed_col] == ''][original_col].head(3).tolist()
+                    self.logger.debug(f"Examples of texts that became empty strings in '{col}': {empty_examples}")
+        
+        return True
+
     def apply_clustering_perspectives(self, dataframe):
         """
         Applies all clustering perspectives with enhanced error handling and isolation.
         Handles both AI classification and traditional clustering perspectives safely.
+        Uses improved missing value detection that distinguishes between truly missing data
+        and empty strings from preprocessing.
 
         Args:
             dataframe: DataFrame with preprocessed data
@@ -771,7 +868,6 @@ class ClassificationPipeline:
         try:
             self.logger.info("Applying clustering and classification perspectives")
             
-            # Get and validate perspectives
             perspectives = self.config.get_clustering_perspectives()
             if not perspectives:
                 self.logger.error("No clustering perspectives found in configuration")
@@ -779,18 +875,15 @@ class ClassificationPipeline:
             
             self.logger.info(f"Found {len(perspectives)} perspectives: {', '.join(perspectives.keys())}")
             
-            # Validate input dataframe
             if dataframe is None:
                 self.logger.error("Input dataframe is None")
                 return None, None, None
             
-            # Check for existing checkpoint
             if self.checkpoint_manager and self.checkpoint_manager.checkpoint_exists('clustering_results'):
                 self.logger.info("Found checkpoint for clustering results, attempting to load")
                 try:
                     result = self.checkpoint_manager.load_checkpoint('clustering_results')
                     if result is not None and len(result) == 3:
-                        # Validate checkpoint data
                         checkpoint_df, features_dict, assignments_dict = result
                         if checkpoint_df is not None and len(assignments_dict) > 0:
                             self.logger.info("Successfully loaded clustering results from checkpoint")
@@ -799,13 +892,11 @@ class ClassificationPipeline:
                 except Exception as checkpoint_error:
                     self.logger.warning(f"Failed to load checkpoint: {checkpoint_error}, proceeding with full processing")
             
-            # Initialize result containers
             features_dict = {}
             cluster_assignments_dict = {}
             successful_perspectives = []
             failed_perspectives = []
             
-            # Convert to pandas if needed for consistent processing
             is_spark_df = isinstance(dataframe, SparkDataFrame)
             if is_spark_df:
                 self.logger.info("Converting Spark DataFrame to pandas for perspective processing")
@@ -817,18 +908,15 @@ class ClassificationPipeline:
             else:
                 pandas_df = dataframe.copy()
             
-            # Validate pandas DataFrame
             if pandas_df.empty:
                 self.logger.error("DataFrame is empty after conversion")
                 return None, None, None
             
-            # Apply each perspective with error isolation
             for perspective_name, perspective_config in perspectives.items():
                 self.logger.info(f"Processing perspective: {perspective_name}")
                 self.performance_monitor.start_timer(f'perspective_{perspective_name}')
                 
                 try:
-                    # Validate perspective configuration
                     perspective_type = perspective_config.get('type', 'clustering')
                     columns = perspective_config.get('columns', [])
                     output_column = perspective_config.get('output_column')
@@ -838,10 +926,8 @@ class ClassificationPipeline:
                     if not output_column:
                         raise ValueError(f"No output column specified for perspective {perspective_name}")
                     
-                    # Check if required columns exist
                     missing_columns = [col for col in columns if col not in pandas_df.columns]
                     if missing_columns:
-                        # Try preprocessed columns
                         preprocessed_columns = []
                         still_missing = []
                         for col in columns:
@@ -856,15 +942,23 @@ class ClassificationPipeline:
                         else:
                             self.logger.info(f"Using preprocessed columns for {perspective_name}: {preprocessed_columns}")
                     
-                    # Identify rows with missing values for input tracking
                     perspective_columns = [col if col in pandas_df.columns else f"{col}_preprocessed" for col in columns]
-                    missing_rows_mask = self._identify_missing_rows(pandas_df, perspective_columns)
-                    missing_count = missing_rows_mask.sum()
                     
-                    if missing_count > 0:
-                        self.logger.info(f"Perspective {perspective_name}: {missing_count} rows have missing input values")
+                    self.logger.info(f"Analyzing data availability for perspective: {perspective_name}")
+                    processing_info = self._get_processable_rows_info(pandas_df, perspective_columns)
                     
-                    # Check for perspective-specific checkpoint
+                    self.logger.info(f"Perspective {perspective_name} data analysis:")
+                    self.logger.info(f"  Total rows: {processing_info['total_rows']:,}")
+                    self.logger.info(f"  Truly missing data: {processing_info['truly_missing_count']:,} rows")
+                    self.logger.info(f"  Completely empty rows: {processing_info['completely_empty_count']:,} rows")
+                    self.logger.info(f"  Processable rows: {processing_info['processable_count']:,} rows ({processing_info['processable_percentage']:.1f}%)")
+                    
+                    truly_missing_mask = processing_info['truly_missing_mask']
+                    
+                    if processing_info['processable_count'] == 0:
+                        self.logger.warning(f"No processable rows found for perspective {perspective_name}, skipping")
+                        continue
+                    
                     perspective_checkpoint_key = f'perspective_{perspective_name}'
                     if self.checkpoint_manager and self.checkpoint_manager.checkpoint_exists(perspective_checkpoint_key):
                         self.logger.info(f"Loading checkpoint for perspective {perspective_name}")
@@ -873,19 +967,15 @@ class ClassificationPipeline:
                             if checkpoint_data and len(checkpoint_data) == 3:
                                 perspective_df, perspective_features, perspective_assignments = checkpoint_data
                                 
-                                # Validate checkpoint data
                                 if (perspective_df is not None and output_column in perspective_df.columns):
-                                    # Update main DataFrame
                                     pandas_df[output_column] = perspective_df[output_column]
-                                    pandas_df.loc[missing_rows_mask, output_column] = pd.NA
+                                    pandas_df.loc[truly_missing_mask, output_column] = pd.NA
                                     
-                                    # Handle labels if present
                                     label_column = f"{output_column}_label"
                                     if label_column in perspective_df.columns:
                                         pandas_df[label_column] = perspective_df[label_column]
-                                        pandas_df.loc[missing_rows_mask, label_column] = pd.NA
+                                        pandas_df.loc[truly_missing_mask, label_column] = pd.NA
                                     
-                                    # Store results
                                     features_dict[f"{perspective_name}_combined"] = perspective_features
                                     cluster_assignments_dict[perspective_name] = perspective_assignments
                                     successful_perspectives.append(perspective_name)
@@ -896,7 +986,6 @@ class ClassificationPipeline:
                         except Exception as checkpoint_load_error:
                             self.logger.warning(f"Failed to load checkpoint for {perspective_name}: {checkpoint_load_error}")
                     
-                    # Apply the perspective with error handling
                     try:
                         perspective_df, perspective_features, perspective_assignments = self.classifier_manager.classify_perspective(
                             pandas_df, perspective_name, perspective_config
@@ -908,21 +997,17 @@ class ClassificationPipeline:
                         if output_column not in perspective_df.columns:
                             raise RuntimeError(f"Output column {output_column} not found in results")
                         
-                        # Update main DataFrame with results
                         pandas_df[output_column] = perspective_df[output_column]
-                        pandas_df.loc[missing_rows_mask, output_column] = pd.NA
+                        pandas_df.loc[truly_missing_mask, output_column] = pd.NA
                         
-                        # Handle labels if generated
                         label_column = f"{output_column}_label"
                         if label_column in perspective_df.columns:
                             pandas_df[label_column] = perspective_df[label_column]
-                            pandas_df.loc[missing_rows_mask, label_column] = pd.NA
+                            pandas_df.loc[truly_missing_mask, label_column] = pd.NA
                         
-                        # Store features and assignments
                         features_dict[f"{perspective_name}_combined"] = perspective_features
                         cluster_assignments_dict[perspective_name] = perspective_assignments
                         
-                        # Save perspective checkpoint
                         try:
                             if self.checkpoint_manager:
                                 self.checkpoint_manager.save_checkpoint(
@@ -934,29 +1019,26 @@ class ClassificationPipeline:
                         
                         successful_perspectives.append(perspective_name)
                         
-                        # Log results summary
-                        unique_values = pandas_df[output_column].nunique()
-                        self.logger.info(f"Perspective {perspective_name} completed: {unique_values} unique categories assigned")
+                        final_classifications = pandas_df[output_column].notna().sum()
+                        final_missing = pandas_df[output_column].isna().sum()
                         
-                        if missing_count > 0:
-                            final_missing = pandas_df[output_column].isna().sum()
-                            self.logger.info(f"Set {final_missing} assignments to missing due to missing input values")
+                        self.logger.info(f"Perspective {perspective_name} completed successfully:")
+                        self.logger.info(f"  Classifications assigned: {final_classifications:,} rows")
+                        self.logger.info(f"  Missing assignments: {final_missing:,} rows")
+                        self.logger.info(f"  Processing efficiency: {(final_classifications/processing_info['total_rows'])*100:.1f}%")
                     
                     except Exception as perspective_error:
                         self.logger.error(f"Failed to apply perspective {perspective_name}: {str(perspective_error)}")
                         self.logger.error(traceback.format_exc())
                         failed_perspectives.append((perspective_name, str(perspective_error)))
-                        # Continue with other perspectives
                     
                 except Exception as config_error:
                     self.logger.error(f"Configuration error for perspective {perspective_name}: {str(config_error)}")
                     failed_perspectives.append((perspective_name, str(config_error)))
-                    # Continue with other perspectives
                 
                 finally:
                     self.performance_monitor.stop_timer(f'perspective_{perspective_name}')
             
-            # Report results
             self.logger.info(f"Perspective processing completed:")
             self.logger.info(f"  - Successful: {len(successful_perspectives)} perspectives")
             self.logger.info(f"  - Failed: {len(failed_perspectives)} perspectives")
@@ -966,7 +1048,6 @@ class ClassificationPipeline:
                 for name, error in failed_perspectives:
                     self.logger.warning(f"  - {name}: {error}")
             
-            # Check if we have any successful results
             if not successful_perspectives:
                 self.logger.error("No perspectives were applied successfully")
                 return None, None, None
@@ -974,7 +1055,6 @@ class ClassificationPipeline:
             if len(successful_perspectives) < len(perspectives):
                 self.logger.warning(f"Only {len(successful_perspectives)}/{len(perspectives)} perspectives succeeded - continuing with partial results")
             
-            # Save overall checkpoint
             try:
                 if self.checkpoint_manager:
                     self.checkpoint_manager.save_checkpoint(
@@ -991,7 +1071,7 @@ class ClassificationPipeline:
             self.logger.error(f"Critical error applying clustering perspectives: {str(e)}")
             self.logger.error(traceback.format_exc())
             return None, None, None
-    
+
     def evaluate_and_report(self, dataframe, features_dict, cluster_assignments_dict):
         """
         Evaluates clustering AND classification results and generates reports.
