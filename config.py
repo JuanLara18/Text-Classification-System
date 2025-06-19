@@ -667,8 +667,8 @@ class ConfigManager:
         # Validate classification configuration
         classification_config = perspective.get('classification_config', {})
         batch_size = classification_config.get('batch_size', 10)
-        if not (1 <= batch_size <= 100):
-            errors.append(f"AI classification perspective '{name}': batch_size must be between 1 and 100")
+        if not (1 <= batch_size <= 200):
+            errors.append(f"AI classification perspective '{name}': batch_size must be between 1 and 200")
     
     def _validate_ai_classification_global_config(self, perspectives: dict):
         """Validate global AI classification configuration."""
