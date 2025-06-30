@@ -135,7 +135,7 @@ clustering_perspectives:
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 100
+      batch_size: 150
       unknown_category: "Unknown"
       prompt_template: |
         Classify BMW error into expert categories:
@@ -174,7 +174,7 @@ clustering_perspectives:
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 80
+      batch_size: 120
       unknown_category: "Unknown"
       prompt_template: |
         Classify BMW error using expert 7-group categories:
@@ -220,7 +220,7 @@ clustering_perspectives:
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 60
+      batch_size: 80
       unknown_category: "Unknown"
       prompt_template: |
         Classify BMW error using expert 10-group categories:
@@ -328,7 +328,7 @@ clustering_perspectives:
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 100
+      batch_size: 150
       unknown_category: "Unknown"
       prompt_template: |
         Classify BMW error using data analysis 2-group categories:
@@ -366,7 +366,7 @@ clustering_perspectives:
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 80
+      batch_size: 100
       unknown_category: "Unknown"
       prompt_template: |
         Classify BMW error using data analysis 7-group categories:
@@ -471,7 +471,7 @@ clustering_perspectives:
       api_key_env: "OPENAI_API_KEY"
     
     classification_config:
-      batch_size: 40
+      batch_size: 60
       unknown_category: "Unknown"
       prompt_template: |
         Classify BMW error using comprehensive data analysis 20-group categories:
@@ -519,11 +519,11 @@ ai_classification:
     cache_duration_days: 365
   
   rate_limiting:
-    requests_per_minute: 1000  # Increased for faster model
-    concurrent_requests: 12    # Match CPU count
+    requests_per_minute: 1500  # Increased for faster model
+    concurrent_requests: 16    # Match CPU count
   
   parallel_processing:
-    max_workers: 12  # Match CPU count
+    max_workers: 16  # Match CPU count
 
 # Feature extraction (not used for AI classification but required)
 feature_extraction:
