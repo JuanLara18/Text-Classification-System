@@ -24,7 +24,10 @@ from modules.classifier import ClassifierManager
 from modules.evaluation import ClusterAnalyzer, ClusteringEvaluator, ClusteringVisualizer, EvaluationReporter
 from modules.evaluation import ClassificationEvaluator, ClassificationVisualizer
 
-from pyspark.sql import DataFrame as SparkDataFrame
+try:
+    from pyspark.sql import DataFrame as SparkDataFrame
+except ImportError:
+    SparkDataFrame = type(None)  # isinstance checks return False when pyspark not installed
 
 from classifai.loader import DataLoader
 from classifai.evaluator import PipelineEvaluator

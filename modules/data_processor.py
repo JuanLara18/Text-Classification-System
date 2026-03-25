@@ -10,23 +10,55 @@ import hashlib
 import logging
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
-from sentence_transformers import SentenceTransformer
-import openai
-import umap
+try:
+    from sentence_transformers import SentenceTransformer
+    _ST_AVAILABLE = True
+except ImportError:
+    SentenceTransformer = None  # type: ignore[assignment,misc]
+    _ST_AVAILABLE = False
+
+try:
+    import openai
+    _OPENAI_AVAILABLE = True
+except ImportError:
+    openai = None  # type: ignore[assignment]
+    _OPENAI_AVAILABLE = False
+
+try:
+    import umap
+    _UMAP_AVAILABLE = True
+except ImportError:
+    umap = None  # type: ignore[assignment]
+    _UMAP_AVAILABLE = False
 import warnings
 import string
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-import nltk
-from pyspark.sql import DataFrame as SparkDataFrame
-from pyspark.sql import functions as F
-from pyspark.sql.types import StringType
+try:
+    import nltk
+    from nltk.corpus import stopwords
+    from nltk.stem import WordNetLemmatizer
+    _NLTK_AVAILABLE = True
+except ImportError:
+    nltk = None  # type: ignore[assignment]
+    stopwords = None  # type: ignore[assignment,misc]
+    WordNetLemmatizer = None  # type: ignore[assignment,misc]
+    _NLTK_AVAILABLE = False
+try:
+    from pyspark.sql import DataFrame as SparkDataFrame
+    from pyspark.sql import functions as F
+    from pyspark.sql.types import StringType
+    _PYSPARK_AVAILABLE = True
+except ImportError:
+    SparkDataFrame = type(None)  # isinstance checks return False when pyspark not installed
+    F = None  # type: ignore[assignment]
+    StringType = None  # type: ignore[assignment,misc]
+    _PYSPARK_AVAILABLE = False
 
-# Define an explicit location for NLTK data
-nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
-os.makedirs(nltk_data_path, exist_ok=True)
-os.environ["NLTK_DATA"] = nltk_data_path
-nltk.data.path.insert(0, nltk_data_path)
+# Define an explicit location for NLTK data (only when nltk is installed)
+if _NLTK_AVAILABLE:
+    nltk_data_path = os.path.join(os.getcwd(), "nltk_data")
+    os.makedirs(nltk_data_path, exist_ok=True)
+    os.environ["NLTK_DATA"] = nltk_data_path
+    nltk.data.path.insert(0, nltk_data_path)
 
 def ensure_nltk_data():
     """Ensure NLTK data is available with proper error handling."""

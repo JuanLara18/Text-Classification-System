@@ -6,7 +6,12 @@ import shutil
 import datetime
 import pickle
 import psutil
-from pyspark.sql import SparkSession
+try:
+    from pyspark.sql import SparkSession
+    _PYSPARK_AVAILABLE = True
+except ImportError:
+    SparkSession = None  # type: ignore[assignment,misc]
+    _PYSPARK_AVAILABLE = False
 from collections import defaultdict
 import glob
 

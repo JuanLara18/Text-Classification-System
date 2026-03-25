@@ -13,8 +13,14 @@ from datetime import datetime, timedelta
 import pickle
 import pandas as pd
 from collections import defaultdict, Counter
-import openai
-import tiktoken
+try:
+    import openai
+    import tiktoken
+    _OPENAI_AVAILABLE = True
+except ImportError:
+    openai = None  # type: ignore[assignment]
+    tiktoken = None  # type: ignore[assignment]
+    _OPENAI_AVAILABLE = False
 import threading
 
 import json

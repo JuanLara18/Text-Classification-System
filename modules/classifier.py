@@ -5,14 +5,28 @@ import traceback
 from collections import Counter, defaultdict
 from typing import Any, Dict
 
-import hdbscan
+try:
+    import hdbscan
+    _HDBSCAN_AVAILABLE = True
+except ImportError:
+    hdbscan = None  # type: ignore[assignment]
+    _HDBSCAN_AVAILABLE = False
+
 import numpy as np
 import pandas as pd
 from sklearn.cluster import AgglomerativeClustering, KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-import openai
-from pyspark.sql import DataFrame as SparkDataFrame
+try:
+    import openai
+    _OPENAI_AVAILABLE = True
+except ImportError:
+    openai = None  # type: ignore[assignment]
+    _OPENAI_AVAILABLE = False
+try:
+    from pyspark.sql import DataFrame as SparkDataFrame
+except ImportError:
+    SparkDataFrame = type(None)  # isinstance checks return False when pyspark not installed
 import json
 
 import scipy.sparse
