@@ -1,0 +1,165 @@
+# ============================================================
+# Text Classification System — Example Configuration
+# Use case: Customer support ticket routing
+# ============================================================
+# This file shows how to classify a CSV of support tickets
+# using both AI (OpenAI) and traditional clustering.
+#
+# Run with:
+#   python main.py --config config.example.yaml
+
+input_file:  "data/support_tickets.csv"
+output_file: "data/support_tickets_classified.csv"
+results_dir: "output/support_tickets"
+
+# Columns that contain text to analyze
+text_columns:
+  - subject
+  - body
+
+# ── Preprocessing ────────────────────────────────────────────
+preprocessing:
+  lowercase: true
+  remove_punctuation: false   # keep ? ! — useful signal in tickets
+  remove_stopwords: false
+  lemmatize: false
+  min_word_length: 2
+  max_length: 2000
+
+# ── Classification perspectives ──────────────────────────────
+clustering_perspectives:
+
+  # --- AI: assign tickets to support departments ---
+  department_routing:
+    type: "openai_classification"
+    columns: ["subject", "body"]
+    target_categories:
+      - "Billing & Payments"
+      - "Technical Support"
+      - "Account & Access"
+      - "Shipping & Delivery"
+      - "Returns & Refunds"
+      - "Product Information"
+      - "Other"
+    output_column: "routed_to"
+
+    llm_config:
+      provider: "openai"
+      model: "gpt-4o-mini"
+      temperature: 0.0
+      max_tokens: 20
+      api_key_env: "OPENAI_API_KEY"
+
+    classification_config:
+      batch_size: 50
+      unknown_category: "Other"
+      prompt_template: |
+        You are a customer support routing agent.
+        Classify the following support ticket into exactly one department.
+
+        Departments:
+        - "Billing & Payments": invoices, charges, refund status, payment methods
+        - "Technical Support": bugs, errors, app crashes, integrations
+        - "Account & Access": login issues, password reset, permissions
+        - "Shipping & Delivery": tracking, delays, lost packages
+        - "Returns & Refunds": return requests, refund processing
+        - "Product Information": questions about features, compatibility, pricing
+        - "Other": anything that doesn't fit above
+
+        Ticket:
+        {text}
+
+        Department name only:
+
+  # --- AI: flag urgency level ---
+  urgency_flag:
+    type: "openai_classification"
+    columns: ["subject", "body"]
+    target_categories:
+      - "Critical"
+      - "High"
+      - "Normal"
+      - "Low"
+    output_column: "urgency"
+
+    llm_config:
+      provider: "openai"
+      model: "gpt-4o-mini"
+      temperature: 0.0
+      max_tokens: 10
+      api_key_env: "OPENAI_API_KEY"
+
+    classification_config:
+      batch_size: 80
+      unknown_category: "Normal"
+
+  # --- Clustering: discover recurring issue patterns ---
+  issue_patterns:
+    type: "clustering"
+    algorithm: "hdbscan"
+    columns: ["subject", "body"]
+    output_column: "issue_cluster"
+    params:
+      min_cluster_size: 20
+      min_samples: 5
+
+# ── Feature extraction (used for clustering) ─────────────────
+feature_extraction:
+  method: "hybrid"           # tfidf + sentence embeddings
+  tfidf:
+    max_features: 2000
+    ngram_range: [1, 2]
+  embedding:
+    model: "sentence-transformers"
+    sentence_transformers:
+      model_name: "all-MiniLM-L6-v2"
+
+# ── AI global settings ────────────────────────────────────────
+ai_classification:
+  cost_management:
+    max_cost_per_run: 5.0    # Hard stop at $5
+  caching:
+    enabled: true
+    cache_directory: ".cache/ai"
+  rate_limiting:
+    requests_per_minute: 500
+    concurrent_requests: 5
+
+# ── Evaluation & reports ──────────────────────────────────────
+evaluation:
+  metrics:
+    - silhouette_score
+    - davies_bouldin_score
+  visualizations:
+    - distribution_plot
+    - embeddings_plot
+  output_format:
+    - html
+    - json
+
+# ── Cluster analysis ──────────────────────────────────────────
+cluster_analysis:
+  enabled: true
+  top_terms_count: 8
+  examples_count: 3
+
+cluster_labeling:
+  method: "openai"
+  openai:
+    model: "gpt-4o-mini"
+    temperature: 0.3
+    max_tokens: 50
+    api_key_env: "OPENAI_API_KEY"
+
+# ── Misc ──────────────────────────────────────────────────────
+logging:
+  level: "INFO"
+  console_output: true
+  log_file: "logs/support_tickets.log"
+
+options:
+  seed: 42
+  save_intermediate: false
+
+checkpoint:
+  enabled: true

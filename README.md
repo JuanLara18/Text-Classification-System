@@ -190,8 +190,8 @@ Example: If you classify job positions, you'll get a new column like `job_catego
 ### Basic Configuration Structure
 ```yaml
 # Required: Your data and columns
-input_file: "path/to/your/data.dta"
-output_file: "path/to/output.dta" 
+input_file: "path/to/your/data.csv"
+output_file: "path/to/output.csv"
 text_columns: ["column1", "column2"]
 
 # Required: Classification setup
@@ -204,9 +204,9 @@ clustering_perspectives:
 ```
 
 ### Supported File Formats
-- **Stata files** (`.dta`) - Primary format
-- **CSV files** (`.csv`) - Basic support
-- **Excel files** (`.xlsx`) - Convert to Stata first
+- **CSV files** (`.csv`)
+- **Stata files** (`.dta`)
+- **Excel files** (`.xlsx`)
 
 ### Cost Management
 The system includes built-in cost controls:
@@ -343,45 +343,58 @@ feature_extraction:
 
 ## Examples
 
-### Example 1: Job Position Classification
+A full working example configuration is provided in [`config.example.yaml`](config.example.yaml). It classifies customer support tickets by department and urgency, and also discovers recurring issue patterns via clustering — a realistic end-to-end scenario.
+
+### Example 1: Customer Support Ticket Routing
 ```yaml
-input_file: "data/hr_data.dta"
-text_columns: ["position_title", "job_description"]
+input_file: "data/support_tickets.csv"
+text_columns: ["subject", "body"]
 
 clustering_perspectives:
-  job_classifier:
+  department_routing:
     type: "openai_classification"
-    columns: ["position_title"]
+    columns: ["subject", "body"]
     target_categories:
-      - "Software Engineering"
-      - "Data Science" 
-      - "Product Management"
-      - "Sales"
-      - "Marketing"
-      - "Human Resources"
-      - "Finance"
-      - "Operations"
+      - "Billing & Payments"
+      - "Technical Support"
+      - "Account & Access"
+      - "Shipping & Delivery"
+      - "Returns & Refunds"
       - "Other"
-    output_column: "job_category"
+    output_column: "routed_to"
+
+  issue_patterns:
+    type: "clustering"
+    algorithm: "hdbscan"
+    columns: ["subject", "body"]
+    output_column: "issue_cluster"
 ```
 
-### Example 2: Customer Feedback Analysis  
+### Example 2: Customer Feedback Sentiment
 ```yaml
-input_file: "data/feedback.dta"
-text_columns: ["customer_comment"]
+input_file: "data/reviews.csv"
+text_columns: ["review_text"]
 
 clustering_perspectives:
-  sentiment_classifier:
+  sentiment:
     type: "openai_classification"
-    columns: ["customer_comment"]
+    columns: ["review_text"]
     target_categories:
       - "Positive"
-      - "Negative" 
+      - "Negative"
       - "Neutral"
       - "Feature Request"
       - "Bug Report"
     output_column: "feedback_type"
 ```
+
+---
+
+## Real-world use case
+
+This system was originally developed as part of a research project at **Harvard Business School**, where it was used to classify manufacturing maintenance records from an industrial dataset. The pipeline processed thousands of work order descriptions (written in English and German) and tested multiple classification taxonomies — from 2 broad categories up to 20 granular failure modes — using both GPT-based classification and traditional clustering in parallel.
+
+The goal was to surface patterns in manufacturing defects that were previously buried in unstructured text fields. The confidential nature of the underlying data means the original dataset cannot be shared, but the methodology, pipeline, and configuration system are exactly what was used in that analysis.
 
 ## License
 
