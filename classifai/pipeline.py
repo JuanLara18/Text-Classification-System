@@ -29,6 +29,8 @@ from pyspark.sql import DataFrame as SparkDataFrame
 from classifai.loader import DataLoader
 from classifai.evaluator import PipelineEvaluator
 from classifai.saver import ResultSaver
+from classifai.backends import LLMBackend
+from classifai import device as _device
 
 
 class ClassificationPipeline:
@@ -91,6 +93,10 @@ class ClassificationPipeline:
             self.logger.info(f"Input file: {self.config.get_input_file_path()}")
             self.logger.info(f"Output file: {self.config.get_output_file_path()}")
             self.logger.info(f"Results directory: {results_dir}")
+
+            # Show GPU/CPU banner once at startup
+            _device.print_banner()
+            self.logger.info(f"Compute device: {_device.get()}")
 
             # Initialize the components
             self.initialize_components()
@@ -727,9 +733,21 @@ class ClassificationPipeline:
                             self.logger.warning(f"Failed to load checkpoint for {perspective_name}: {checkpoint_load_error}")
 
                     try:
-                        perspective_df, perspective_features, perspective_assignments = self.classifier_manager.classify_perspective(
-                            pandas_df, perspective_name, perspective_config
-                        )
+                        if perspective_type == "openai_classification":
+                            # ── New LLMBackend path ──────────────────────────
+                            backend = LLMBackend.from_config(perspective_config, self.config)
+                            text_series = pandas_df[perspective_columns].apply(
+                                lambda row: " ".join(row.astype(str)), axis=1
+                            )
+                            labels = backend.predict(text_series)
+                            perspective_df = pandas_df.copy()
+                            perspective_df[output_column] = labels.values
+                            perspective_features = None
+                            perspective_assignments = {perspective_name: labels}
+                        else:
+                            perspective_df, perspective_features, perspective_assignments = self.classifier_manager.classify_perspective(
+                                pandas_df, perspective_name, perspective_config
+                            )
 
                         if perspective_df is None:
                             raise RuntimeError(f"Classifier returned None for perspective {perspective_name}")
