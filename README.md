@@ -1,412 +1,272 @@
-# AI Text Classification System
+# classifai
 
-![Repo Size](https://img.shields.io/github/repo-size/JuanLara18/Text-Classification-System)
-![License](https://img.shields.io/github/license/JuanLara18/Text-Classification-System)
-![Last Commit](https://img.shields.io/github/last-commit/JuanLara18/Text-Classification-System)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
+[![GitHub stars](https://img.shields.io/github/stars/JuanLara18/classifai?style=social)](https://github.com/JuanLara18/classifai/stargazers)
 
-Easily label large text files using AI and classic clustering methods. The
-system relies on OpenAI models along with scikit-learn, HDBSCAN and PySpark to
-process your data, add new category columns and create detailed reports.
+**Classify text at any scale.** From a quick zero-shot call to a local LLM to production-scale fine-tuned transformers — one tool, one config, one command.
 
-## Quick Start
+classifai handles the full classification pipeline: load any dataset → classify or cluster the text → get a clean report with metrics and visualizations. Swap backends without changing your workflow.
 
-### 0. Clone this repository
+---
+
+## Why classifai?
+
+Most classification tools lock you into one approach. When your dataset grows, or your API bill spikes, or you need to run offline, you're starting over. classifai is built around interchangeable backends:
+
+| Backend | Best for | Requires |
+|---|---|---|
+| `sklearn` | Baseline, millions of rows, no GPU | Nothing extra |
+| `zero-shot` | No labeled data, quick exploration | HuggingFace |
+| `llm` | Best accuracy, flexible categories | OpenAI / Anthropic / Ollama |
+| `setfit` | 8–32 labeled examples per class | `sentence-transformers` |
+| `transformers` | Production accuracy, GPU-optimized | PyTorch + GPU |
+
+Same config file. Same output format. Different backend.
+
+---
+
+## Quick start
+
 ```bash
-git clone https://github.com/JuanLara18/Text-Classification-System.git
-cd Text-Classification-System
-```
-
-### 1. Create and activate a virtual environment
-```bash
-python3 -m venv venv
-
-# On Mac/Linux:
-source venv/bin/activate
-
-# On Windows:
-venv\Scripts\activate
-```
-
-### 2. Install dependencies
-```bash
+git clone https://github.com/JuanLara18/classifai.git
+cd classifai
 pip install -r requirements.txt
 ```
 
-### 3. Set up your OpenAI API key
+Set your API key if using the LLM backend:
 
-**Step 3.1: Get your API key**
-- Visit: https://platform.openai.com/api-keys
-- Create a new API key
-- Copy the key (starts with `sk-`)
-
-**Step 3.2: Create a .env file**
 ```bash
-# Create .env file in the project root
-echo "OPENAI_API_KEY=sk-your-actual-key-here" > .env
+echo "OPENAI_API_KEY=sk-..." > .env
 ```
 
-**Step 3.3: Load the environment variables (Choose the method for your system)**
+Run on the included example:
 
-**Option A: Install python-dotenv (Recommended - Works on all platforms)**
 ```bash
-pip install python-dotenv
-```
-*The system will automatically load your .env file when running the classifier.*
-
-**Option B: Load manually (Mac/Linux)**
-```bash
-# Method 1: Using export
-export $(grep -v '^#' .env | xargs)
-
-# Method 2: Using source (edit .env to add 'export' first)
-# Edit your .env file to: export OPENAI_API_KEY=sk-your-actual-key-here
-source .env
+python main.py --config config.example.yaml
 ```
 
-**Option C: Load manually (Windows)**
-```cmd
-# Command Prompt
-set OPENAI_API_KEY=sk-your-actual-key-here
-
-# PowerShell
-$env:OPENAI_API_KEY="sk-your-actual-key-here"
-```
-
-**⚠️ Important:** Replace `sk-your-actual-key-here` with your real OpenAI API key.
-
-### 4. Configure your classification (Choose one option)
-
-**Option A: Web Interface (Recommended for beginners)**
-- Visit: https://text-classification-config.streamlit.app
-- Upload your data and configure your classification settings through the web interface
-- Download the generated `config.yaml` file to your project folder
-
-**Option B: Local Web Interface**
-```bash
-streamlit run app.py
-```
-Then open your browser to `http://localhost:8501` to configure your settings locally.
-
-**Option C: Manual Configuration**
-- Copy and edit the sample `config.yaml` file in the repository
-- Configure your input/output files, text columns, and classification perspectives
-
-### 5. Prepare your classification settings
-
-The system supports two main approaches:
-
-**AI Classification with ChatGPT**
-- Set `type: "openai_classification"`
-- Define your `target_categories` (e.g., job titles, product types, sentiment)
-- Specify which `columns` to classify
-- Perfect for when you know what categories you want
-
-**Traditional Clustering**
-- Set `type: "clustering"`
-- Choose an `algorithm` such as `hdbscan` or `kmeans`
-- Use this to discover hidden patterns in your data
-- Great for exploratory analysis when you don't know the categories beforehand
-
-### 6. Run the classifier
-```bash
-python main.py --config config.yaml
-```
-
-Your results will be automatically saved in the `output/` folder. The system creates all necessary folders automatically based on your configuration.
-
-### 🔍 Verification
-
-To verify everything is working correctly:
-
-1. **Check your API key is loaded:**
-   ```bash
-   # Mac/Linux
-   echo $OPENAI_API_KEY
-   
-   # Windows Command Prompt
-   echo %OPENAI_API_KEY%
-   
-   # Windows PowerShell
-   echo $env:OPENAI_API_KEY
-   ```
-
-2. **Test with a small dataset first** to ensure everything works before processing large files.
-
-### 💡 Tips
-
-- **For beginners:** Use the web interface (Option A) to generate your configuration
-- **For advanced users:** Edit the `config.yaml` file directly for more control
-- **Multiple perspectives:** You can define both AI and clustering approaches in the same configuration file to compare results
-- **Large datasets:** The system supports processing large files efficiently using Spark
-- **Resumable processing:** If interrupted, the system can resume from checkpoints
-
-### 🆘 Troubleshooting
-
-**API Key Issues:**
-- Ensure your API key starts with `sk-`
-- Check that the environment variable is set correctly
-- Verify you have sufficient OpenAI API credits
-
-**Import Errors:**
-- Make sure you activated your virtual environment
-- Try reinstalling dependencies: `pip install -r requirements.txt`
-
-**Configuration Issues:**
-- Use the web interface to generate a valid configuration
-- Check that your input file path is correct
-- Ensure your text columns exist in your dataset
+Results land in `output/` — a classified CSV and an HTML report.
 
 ---
 
-## Essential Commands
+## Configuration
 
-```bash
-# Basic usage
-python main.py --config config.yaml
+All behavior is controlled by a single YAML file. A complete annotated example is in [`config.example.yaml`](config.example.yaml).
 
-# Force recalculation (ignore cache)
-python main.py --config config.yaml --force-recalculate
+### Minimal config (AI classification)
 
-# Test with debug output
-python main.py --config config.yaml --log-level debug
-
-# Process specific input/output files
-python main.py --config config.yaml --input data/myfile.dta --output results/classified.dta
-```
-
-## What You Get
-
-The system adds new columns to your data:
-- `{classification_name}` - The assigned category
-- Detailed HTML reports with visualizations
-- Cost tracking and performance metrics
-
-Example: If you classify job positions, you'll get a new column like `job_category` with values like "Engineering", "Sales", etc.
-
----
-
-## Configuration Guide
-
-### Basic Configuration Structure
 ```yaml
-# Required: Your data and columns
-input_file: "path/to/your/data.csv"
-output_file: "path/to/output.csv"
-text_columns: ["column1", "column2"]
+input_file:  "data/my_data.csv"
+output_file: "data/my_data_classified.csv"
+text_columns: [text]
 
-# Required: Classification setup
 clustering_perspectives:
-  your_classifier_name:
+  category:
     type: "openai_classification"
-    columns: ["column1"]              # Which columns to classify
-    target_categories: ["Cat1", "Cat2"]  # Your categories
-    output_column: "new_category_column"  # Name of new column
+    columns: [text]
+    target_categories: ["Billing", "Technical Support", "Other"]
+    output_column: "routed_to"
+    llm_config:
+      model: "gpt-4o-mini"
+      api_key_env: "OPENAI_API_KEY"
 ```
 
-### Supported File Formats
-- **CSV files** (`.csv`)
-- **Stata files** (`.dta`)
-- **Excel files** (`.xlsx`)
+### Minimal config (clustering — no labels needed)
 
-### Cost Management
-The system includes built-in cost controls:
+```yaml
+input_file:  "data/my_data.csv"
+output_file: "data/my_data_clustered.csv"
+text_columns: [text]
+
+clustering_perspectives:
+  topics:
+    type: "clustering"
+    algorithm: "hdbscan"
+    columns: [text]
+    output_column: "topic_cluster"
+```
+
+### Mix both in one run
+
+Define multiple perspectives in the same file — AI classification and clustering run in parallel and their results are compared in the final report.
+
+---
+
+## What you get
+
+For each run classifai produces:
+
+- **Classified dataset** — original file with new label columns added
+- **HTML report** — distribution plots, embedding visualizations, cluster analysis, cost summary
+- **JSON results** — machine-readable metrics (silhouette score, Davies-Bouldin, per-category counts)
+
+### Cost management
+
+The LLM backend never exceeds your budget:
+
 ```yaml
 ai_classification:
   cost_management:
-    max_cost_per_run: 10.0  # Stop if cost exceeds $10
+    max_cost_per_run: 5.00   # hard stop at $5
 ```
 
-**Typical costs:**
-- Small dataset (1,000 rows): ~$0.50
-- Medium dataset (10,000 rows): ~$2.00  
-- Large dataset (100,000 rows): ~$15.00
+Typical costs with `gpt-4o-mini`:
 
-### Performance Settings
-```yaml
-performance:
-  batch_size: 50        # Process 50 items at once
-  parallel_jobs: 4      # Use 4 CPU cores
-  cache_embeddings: true # Cache results to avoid reprocessing
+| Dataset size | Estimated cost |
+|---|---|
+| 1,000 rows | ~$0.10 |
+| 10,000 rows | ~$0.80 |
+| 100,000 rows | ~$6.00 |
+
+---
+
+## Supported file formats
+
+- CSV (`.csv`)
+- Stata (`.dta`)
+- Excel (`.xlsx`)
+
+---
+
+## Run options
+
+```bash
+# Standard run
+python main.py --config config.yaml
+
+# Ignore cache and recompute everything
+python main.py --config config.yaml --force-recalculate
+
+# Verbose logging
+python main.py --config config.yaml --log-level debug
+
+# Override input/output from CLI
+python main.py --config config.yaml --input data/new.csv --output results/out.csv
 ```
 
-## Advanced Usage
+---
 
-### Multiple Classifications
-You can create multiple classification perspectives:
+## Advanced usage
+
+### Multiple classification perspectives
+
 ```yaml
 clustering_perspectives:
-  job_categories:
-    columns: ["job_title"]
-    target_categories: ["Engineering", "Sales", "Marketing"]
-    output_column: "job_category"
-  
-  skill_levels:
-    columns: ["job_description"] 
-    target_categories: ["Entry Level", "Mid Level", "Senior Level"]
-    output_column: "skill_level"
+
+  # Classify by department
+  department:
+    type: "openai_classification"
+    columns: [subject, body]
+    target_categories: ["Billing", "Technical Support", "Account", "Other"]
+    output_column: "department"
+
+  # Classify by urgency
+  urgency:
+    type: "openai_classification"
+    columns: [subject, body]
+    target_categories: ["Critical", "High", "Normal", "Low"]
+    output_column: "urgency"
+
+  # Discover unknown patterns
+  patterns:
+    type: "clustering"
+    algorithm: "hdbscan"
+    columns: [body]
+    output_column: "issue_pattern"
 ```
 
-### Traditional Clustering (No AI)
-For exploratory analysis without predefined categories:
-```yaml
-clustering_perspectives:
-  content_clusters:
-    type: "clustering"              # Traditional clustering
-    algorithm: "hdbscan"            # or "kmeans"
-    columns: ["text_column"]
-    params:
-      min_cluster_size: 50
-    output_column: "discovered_cluster"
-```
+### Custom prompts
 
-### Custom Prompts
-Customize how the AI classifies your data:
 ```yaml
 classification_config:
   prompt_template: |
-    You are an expert in job classification.
-    Classify this job position into exactly one category.
-    
-    Categories: {categories}
-    Job Position: {text}
-    
-    Consider the job title, responsibilities, and required skills.
-    Respond with only the category name.
+    You are a support routing expert.
+    Classify the ticket below into exactly one department.
+
+    Departments: {categories}
+    Ticket: {text}
+
+    Department name only:
 ```
 
-## Troubleshooting
+### Feature extraction for clustering
 
-### Common Issues
-
-**"API key not found"**
-```bash
-# Check your .env file
-cat .env
-# Should show: OPENAI_API_KEY=sk-...
-```
-
-**"File not found"**
-```bash
-# Check your file path in config.yaml
-ls input/  # List files in input directory
-```
-
-**"Memory error"**
-```yaml
-# Reduce batch size in config.yaml
-performance:
-  batch_size: 25  # Reduce from 50
-```
-
-**"Too expensive"**
-```yaml
-# Set lower cost limit
-ai_classification:
-  cost_management:
-    max_cost_per_run: 5.0  # Reduce from 10.0
-```
-
-### Getting Help
-
-1. **Check logs**: Look in `logs/classification.log`
-2. **Enable debug mode**: Use `--log-level debug`
-3. **Test small sample**: Process just 100 rows first
-
-## Technical Details
-
-### System Architecture
-- **Text Processing**: NLTK + custom preprocessing
-- **AI Classification**: OpenAI GPT models with intelligent caching
-- **Traditional Clustering**: scikit-learn, HDBSCAN, UMAP
-- **Data Processing**: PySpark for large datasets
-- **Unique Value Optimization**: Dramatically reduces API calls by processing only unique text values
-
-### Resource Requirements
-- **Minimum**: 4GB RAM, 2 CPU cores
-- **Recommended**: 8GB RAM, 4 CPU cores  
-- **Large datasets**: 16GB+ RAM, 8+ CPU cores
-
-### Feature Extraction Methods
 ```yaml
 feature_extraction:
-  method: "embedding"  # or "tfidf", "hybrid"
+  method: "hybrid"        # tfidf + sentence embeddings
+  tfidf:
+    max_features: 2000
+    ngram_range: [1, 2]
   embedding:
     model: "sentence-transformers"
     sentence_transformers:
-      model_name: "all-MiniLM-L6-v2"  # Fast, good quality
+      model_name: "all-MiniLM-L6-v2"
 ```
 
-### Supported Algorithms
-- **AI Classification**: GPT-4o-mini, GPT-3.5-turbo, GPT-4
-- **Traditional Clustering**: K-Means, HDBSCAN, Agglomerative
-- **Evaluation Metrics**: Silhouette score, Davies-Bouldin index
+---
 
-## Examples
+## Architecture
 
-A full working example configuration is provided in [`config.example.yaml`](config.example.yaml). It classifies customer support tickets by department and urgency, and also discovers recurring issue patterns via clustering — a realistic end-to-end scenario.
-
-### Example 1: Customer Support Ticket Routing
-```yaml
-input_file: "data/support_tickets.csv"
-text_columns: ["subject", "body"]
-
-clustering_perspectives:
-  department_routing:
-    type: "openai_classification"
-    columns: ["subject", "body"]
-    target_categories:
-      - "Billing & Payments"
-      - "Technical Support"
-      - "Account & Access"
-      - "Shipping & Delivery"
-      - "Returns & Refunds"
-      - "Other"
-    output_column: "routed_to"
-
-  issue_patterns:
-    type: "clustering"
-    algorithm: "hdbscan"
-    columns: ["subject", "body"]
-    output_column: "issue_cluster"
 ```
-
-### Example 2: Customer Feedback Sentiment
-```yaml
-input_file: "data/reviews.csv"
-text_columns: ["review_text"]
-
-clustering_perspectives:
-  sentiment:
-    type: "openai_classification"
-    columns: ["review_text"]
-    target_categories:
-      - "Positive"
-      - "Negative"
-      - "Neutral"
-      - "Feature Request"
-      - "Bug Report"
-    output_column: "feedback_type"
+classifai/
+├── main.py                 # Pipeline entry point
+├── config.py               # Configuration management
+├── config.example.yaml     # Annotated example
+├── modules/
+│   ├── ai_classifier.py    # LLM-based classification (OpenAI)
+│   ├── classifier.py       # Clustering algorithms
+│   ├── data_processor.py   # Data loading and preprocessing
+│   ├── evaluation.py       # Metrics and HTML reports
+│   └── utilities.py        # Logging, caching, checkpoints
+└── tools/
+    └── app.py              # Streamlit config generator UI
 ```
 
 ---
 
 ## Real-world use case
 
-This system was originally developed as part of a research project at **Harvard Business School**, where it was used to classify manufacturing maintenance records from an industrial dataset. The pipeline processed thousands of work order descriptions (written in English and German) and tested multiple classification taxonomies — from 2 broad categories up to 20 granular failure modes — using both GPT-based classification and traditional clustering in parallel.
+classifai was developed as part of a research project at **Harvard Business School**, where it was used to classify manufacturing maintenance records from an industrial dataset. The pipeline processed thousands of work order descriptions in English and German, testing multiple classification taxonomies — from 2 broad categories to 20 granular failure modes — using GPT-based classification and traditional clustering in parallel.
 
-The goal was to surface patterns in manufacturing defects that were previously buried in unstructured text fields. The confidential nature of the underlying data means the original dataset cannot be shared, but the methodology, pipeline, and configuration system are exactly what was used in that analysis.
-
-## License
-
-MIT License - see LICENSE file for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+The goal was to surface patterns in manufacturing defects buried in unstructured text fields. The underlying data is confidential, but the methodology, pipeline, and configuration system are exactly what was used in that analysis.
 
 ---
 
-**Need help?** Create an issue or check the logs in `logs/classification.log`
+## Troubleshooting
+
+**API key not found**
+```bash
+cat .env   # should show OPENAI_API_KEY=sk-...
+```
+
+**Memory error during clustering**
+```yaml
+performance:
+  batch_size: 25    # reduce from default 50
+```
+
+**Cost limit reached before completion**
+```yaml
+ai_classification:
+  cost_management:
+    max_cost_per_run: 20.0
+```
+
+**Logs and debug mode**
+```bash
+python main.py --config config.yaml --log-level debug
+# logs are also written to logs/classification.log
+```
+
+---
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started, add a new backend, or report a bug.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

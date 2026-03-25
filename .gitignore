@@ -176,6 +176,7 @@ reports/
 *.pdf
 report_*.json
 *_report.*
+!.github/**/*_report.*
 
 # Visualizations and plots
 plots/

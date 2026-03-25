@@ -1,0 +1,143 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "classifai"
+version = "0.2.0"
+description = "Classify text at any scale — from zero-shot with a local LLM to fine-tuned transformers — with a single unified interface."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "Juan Lara", email = "juanfelipelara18@gmail.com" }]
+keywords = [
+  "text-classification",
+  "nlp",
+  "llm",
+  "machine-learning",
+  "clustering",
+  "zero-shot",
+  "openai",
+  "transformers",
+  "setfit",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Text Processing :: Linguistic",
+]
+
+# Minimal core — always installed
+dependencies = [
+  "pandas>=1.5",
+  "numpy>=1.23",
+  "scikit-learn>=1.2",
+  "pyyaml>=6.0",
+  "tqdm>=4.64",
+  "rich>=13.0",        # pretty terminal output
+]
+
+[project.optional-dependencies]
+
+# LLM-based classification (OpenAI, Anthropic, Ollama, etc.)
+llm = [
+  "openai>=1.0",
+  "instructor>=1.0",   # structured outputs via Pydantic
+  "tiktoken>=0.5",
+  "anthropic>=0.20",
+]
+
+# Local LLM inference (Ollama, llama.cpp)
+local = [
+  "ollama>=0.1",
+]
+
+# Encoder fine-tuning and zero-shot (ModernBERT, SetFit, NLI)
+transformers = [
+  "transformers>=4.40",
+  "sentence-transformers>=3.0",
+  "setfit>=1.0",
+  "torch>=2.0",
+]
+
+# Clustering and dimensionality reduction
+clustering = [
+  "hdbscan>=0.8",
+  "umap-learn>=0.5",
+  "scipy>=1.9",
+]
+
+# Visualization and reporting
+viz = [
+  "plotly>=5.0",
+  "kaleido>=0.2",
+  "matplotlib>=3.6",
+  "seaborn>=0.12",
+]
+
+# Distributed processing (large datasets)
+spark = [
+  "pyspark>=3.4",
+  "pyarrow>=12.0",
+]
+
+# Web UI
+ui = [
+  "streamlit>=1.30",
+  "fastapi>=0.100",
+  "uvicorn>=0.23",
+]
+
+# Everything except spark (recommended for most users)
+all = [
+  "classifai[llm,local,transformers,clustering,viz,ui]",
+]
+
+# Development
+dev = [
+  "classifai[all]",
+  "pytest>=7.0",
+  "pytest-cov>=4.0",
+  "pytest-mock>=3.10",
+  "black>=23.0",
+  "isort>=5.12",
+  "mypy>=1.5",
+  "ruff>=0.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/JuanLara18/classifai"
+Repository = "https://github.com/JuanLara18/classifai"
+Issues = "https://github.com/JuanLara18/classifai/issues"
+Changelog = "https://github.com/JuanLara18/classifai/blob/main/CHANGELOG.md"
+
+[project.scripts]
+classifai = "classifai.cli:app"
+
+[tool.black]
+line-length = 88
+target-version = ["py39", "py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["classifai", "modules"]
+omit = ["test/*", "tools/*"]
