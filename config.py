@@ -280,36 +280,6 @@ class ConfigManager:
             if path and not os.path.isabs(path):
                 self.config['logging']['log_file'] = os.path.normpath(os.path.join(base_dir, path))
     
-    def _create_directories(self):
-        """
-        Creates directories for output files if they don't exist.
-        
-        This ensures that all necessary directories exist before writing files.
-        """
-        # Create directories for output files
-        for path_key in ['output_file', 'results_dir']:
-            if path_key in self.config and self.config[path_key]:
-                directory = os.path.dirname(self.config[path_key])
-                if not os.path.exists(directory):
-                    self.logger.info(f"Creating directory: {directory}")
-                    os.makedirs(directory, exist_ok=True)
-        
-        # Create nested directories
-        if 'checkpoint' in self.config and 'directory' in self.config['checkpoint'] and self.config['checkpoint'].get('enabled', True):
-            directory = self.config['checkpoint']['directory']
-            if not os.path.exists(directory):
-                self.logger.info(f"Creating checkpoint directory: {directory}")
-                os.makedirs(directory, exist_ok=True)
-        
-        if 'logging' in self.config and 'log_file' in self.config['logging']:
-            log_file = self.config['logging']['log_file']
-            if log_file:
-                directory = os.path.dirname(log_file)
-                if directory and not os.path.exists(directory):
-                    self.logger.info(f"Creating log directory: {directory}")
-                    os.makedirs(directory, exist_ok=True)
-    
-    
     def get_input_file_path(self):
         """
         Gets the path of the input file.
