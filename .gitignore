@@ -21,11 +21,15 @@ api_keys/
 # -----------------------------------------------------------------------------
 # DATA FILES (ALL PRIVATE)
 # -----------------------------------------------------------------------------
-# Input data
+# Input data — private datasets are excluded
 input/
-data/
 raw_data/
 source_data/
+
+# Exclude real data inside data/ but allow synthetic sample files
+data/*
+!data/support_tickets_sample.csv
+!data/generate_sample.py
 
 # Output and results
 output/
@@ -44,10 +48,12 @@ test/logs/*
 test/.gitignore
 
 
-# All data formats
+# All data formats (private datasets)
 *.dta
 *.csv
 *.tsv
+# Allow synthetic sample files committed for examples
+!data/support_tickets_sample.csv
 *.xlsx
 *.xls
 *.json

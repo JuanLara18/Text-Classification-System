@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
 [![GitHub stars](https://img.shields.io/github/stars/JuanLara18/classifai?style=social)](https://github.com/JuanLara18/classifai/stargazers)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/JuanLara18/classifai/blob/main/notebooks/quickstart.ipynb)
 
 **Classify text at any scale.** From a quick zero-shot call to a local LLM to production-scale fine-tuned transformers — one tool, one config, one command.
 
@@ -23,6 +24,14 @@ Most classification tools lock you into one approach. When your dataset grows, o
 | `transformers` | Production accuracy, GPU-optimized | PyTorch + GPU |
 
 Same config file. Same output format. Different backend.
+
+---
+
+## Notebooks
+
+| Notebook | Description | Colab |
+|---|---|---|
+| [quickstart.ipynb](notebooks/quickstart.ipynb) | Load a dataset, classify with LLM, cluster, visualize | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/JuanLara18/classifai/blob/main/notebooks/quickstart.ipynb) |
 
 ---
 
