@@ -118,6 +118,28 @@ class PipelineEvaluator:
                 self.logger.error("No perspectives were evaluated successfully")
                 return None
 
+            # ── Generate rich interactive HTML report ──────────────────────────
+            try:
+                from classifai.reporter import generate_report
+                text_cols = self.config.get_config_value("text_columns", [])
+                results_dir = self.config.get_results_dir()
+                # Auto-detect ground-truth column
+                gt_col = None
+                for candidate in ("true_category", "true_label", "label", "ground_truth"):
+                    if candidate in dataframe.columns:
+                        gt_col = candidate
+                        break
+                report_path = generate_report(
+                    df=dataframe,
+                    perspectives_config=all_perspectives,
+                    results_dir=results_dir,
+                    text_columns=text_cols,
+                    ground_truth_col=gt_col,
+                )
+                self.logger.info(f"Interactive HTML report → {report_path}")
+            except Exception as report_err:
+                self.logger.warning(f"Could not generate rich HTML report: {report_err}")
+
             self.logger.info("Evaluation and reporting completed for all perspectives")
             return evaluation_results
 

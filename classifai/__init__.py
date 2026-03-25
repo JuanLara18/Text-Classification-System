@@ -1,8 +1,9 @@
 from classifai.backends import LLMBackend
 from classifai import device
 from classifai import progress
+from classifai.reporter import generate_report, HTMLReporter
 
-__all__ = ["LLMBackend", "device", "progress"]
+__all__ = ["LLMBackend", "device", "progress", "generate_report", "HTMLReporter"]
 
 
 def __getattr__(name: str):
