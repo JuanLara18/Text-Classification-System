@@ -1,24 +1,28 @@
+# Core
 pandas
 numpy
 scikit-learn
+pyyaml
+tqdm
+rich
+
+# LLM classification
+openai
+instructor
+tiktoken
+anthropic
+
+# Clustering & embeddings
+sentence-transformers
+hdbscan
+umap-learn
 scipy
-pyspark
-pyarrow
-statsmodels
+
+# Visualization & reporting
+plotly
 matplotlib
 seaborn
-plotly
-umap-learn
-hdbscan
-sentence-transformers
-openai
-pyyaml
-pytest
-tqdm
-fastapi
-uvicorn
-nltk
-psutil
-kaleido
-tiktoken
-streamlit
+
+# Optional — large datasets
+# pyspark
+# pyarrow

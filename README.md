@@ -1,41 +1,32 @@
 # classifai
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
-[![GitHub stars](https://img.shields.io/github/stars/JuanLara18/classifai?style=social)](https://github.com/JuanLara18/classifai/stargazers)
+[![Python](https://img.shields.io/badge/python-3.9+-blue)](pyproject.toml)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/JuanLara18/classifai/blob/main/notebooks/quickstart.ipynb)
+[![GitHub stars](https://img.shields.io/github/stars/JuanLara18/classifai?style=social)](https://github.com/JuanLara18/classifai/stargazers)
 
-**Classify text at any scale.** From a quick zero-shot call to a local LLM to production-scale fine-tuned transformers — one tool, one config, one command.
-
-classifai handles the full classification pipeline: load any dataset → classify or cluster the text → get a clean report with metrics and visualizations. Swap backends without changing your workflow.
-
----
-
-## Why classifai?
-
-Most classification tools lock you into one approach. When your dataset grows, or your API bill spikes, or you need to run offline, you're starting over. classifai is built around interchangeable backends:
-
-| Backend | Best for | Requires |
-|---|---|---|
-| `sklearn` | Baseline, millions of rows, no GPU | Nothing extra |
-| `zero-shot` | No labeled data, quick exploration | HuggingFace |
-| `llm` | Best accuracy, flexible categories | OpenAI / Anthropic / Ollama |
-| `setfit` | 8–32 labeled examples per class | `sentence-transformers` |
-| `transformers` | Production accuracy, GPU-optimized | PyTorch + GPU |
-
-Same config file. Same output format. Different backend.
+**Classify any text dataset with one config file.** Use OpenAI, Anthropic, or a free local model — and fall back to unsupervised clustering when you have no labels at all.
 
 ---
 
-## Notebooks
+## What it does
 
-| Notebook | Description | Colab |
-|---|---|---|
-| [quickstart.ipynb](notebooks/quickstart.ipynb) | Load a dataset, classify with LLM, cluster, visualize | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/JuanLara18/classifai/blob/main/notebooks/quickstart.ipynb) |
+Point classifai at a CSV, define your categories (or skip them for clustering), and get back a labeled dataset plus an HTML report.
+
+```bash
+python main.py --config config.example.yaml
+```
+
+It supports two modes that can run **in the same pass**:
+
+| Mode | When to use |
+|---|---|
+| **AI classification** — OpenAI, Anthropic, or Ollama (free, local) | You know your categories |
+| **Clustering** — HDBSCAN, K-Means, UMAP | You want to discover patterns |
 
 ---
 
-## Quick start
+## Install
 
 ```bash
 git clone https://github.com/JuanLara18/classifai.git
@@ -43,238 +34,100 @@ cd classifai
 pip install -r requirements.txt
 ```
 
-Set your API key if using the LLM backend:
+For LLM classification, add your API key:
 
 ```bash
 echo "OPENAI_API_KEY=sk-..." > .env
 ```
 
-Run on the included example:
-
-```bash
-python main.py --config config.example.yaml
-```
-
-Results land in `output/` — a classified CSV and an HTML report.
+To run **completely free and offline**, use [Ollama](https://ollama.com) instead — no key needed, just set `provider: ollama` in the config.
 
 ---
 
-## Configuration
-
-All behavior is controlled by a single YAML file. A complete annotated example is in [`config.example.yaml`](config.example.yaml).
-
-### Minimal config (AI classification)
+## Quick example
 
 ```yaml
-input_file:  "data/my_data.csv"
-output_file: "data/my_data_classified.csv"
-text_columns: [text]
+# config.yaml
+input_file:  "data/support_tickets.csv"
+output_file: "data/classified.csv"
+text_columns: [subject, body]
 
 clustering_perspectives:
-  category:
+
+  # Label tickets by department (LLM)
+  department:
     type: "openai_classification"
-    columns: [text]
-    target_categories: ["Billing", "Technical Support", "Other"]
+    columns: [subject, body]
+    target_categories: [Billing, Technical Support, Account, Other]
     output_column: "routed_to"
     llm_config:
       model: "gpt-4o-mini"
       api_key_env: "OPENAI_API_KEY"
-```
 
-### Minimal config (clustering — no labels needed)
-
-```yaml
-input_file:  "data/my_data.csv"
-output_file: "data/my_data_clustered.csv"
-text_columns: [text]
-
-clustering_perspectives:
+  # Discover unknown patterns (no labels needed)
   topics:
     type: "clustering"
     algorithm: "hdbscan"
-    columns: [text]
+    columns: [body]
     output_column: "topic_cluster"
 ```
 
-### Mix both in one run
-
-Define multiple perspectives in the same file — AI classification and clustering run in parallel and their results are compared in the final report.
-
----
-
-## What you get
-
-For each run classifai produces:
-
-- **Classified dataset** — original file with new label columns added
-- **HTML report** — distribution plots, embedding visualizations, cluster analysis, cost summary
-- **JSON results** — machine-readable metrics (silhouette score, Davies-Bouldin, per-category counts)
-
-### Cost management
-
-The LLM backend never exceeds your budget:
-
-```yaml
-ai_classification:
-  cost_management:
-    max_cost_per_run: 5.00   # hard stop at $5
-```
-
-Typical costs with `gpt-4o-mini`:
-
-| Dataset size | Estimated cost |
-|---|---|
-| 1,000 rows | ~$0.10 |
-| 10,000 rows | ~$0.80 |
-| 100,000 rows | ~$6.00 |
-
----
-
-## Supported file formats
-
-- CSV (`.csv`)
-- Stata (`.dta`)
-- Excel (`.xlsx`)
-
----
-
-## Run options
-
 ```bash
-# Standard run
 python main.py --config config.yaml
-
-# Ignore cache and recompute everything
-python main.py --config config.yaml --force-recalculate
-
-# Verbose logging
-python main.py --config config.yaml --log-level debug
-
-# Override input/output from CLI
-python main.py --config config.yaml --input data/new.csv --output results/out.csv
 ```
+
+**Output:** `data/classified.csv` with two new columns (`routed_to`, `topic_cluster`) and an HTML report in `output/`.
 
 ---
 
-## Advanced usage
+## Key features
 
-### Multiple classification perspectives
-
-```yaml
-clustering_perspectives:
-
-  # Classify by department
-  department:
-    type: "openai_classification"
-    columns: [subject, body]
-    target_categories: ["Billing", "Technical Support", "Account", "Other"]
-    output_column: "department"
-
-  # Classify by urgency
-  urgency:
-    type: "openai_classification"
-    columns: [subject, body]
-    target_categories: ["Critical", "High", "Normal", "Low"]
-    output_column: "urgency"
-
-  # Discover unknown patterns
-  patterns:
-    type: "clustering"
-    algorithm: "hdbscan"
-    columns: [body]
-    output_column: "issue_pattern"
-```
-
-### Custom prompts
-
-```yaml
-classification_config:
-  prompt_template: |
-    You are a support routing expert.
-    Classify the ticket below into exactly one department.
-
-    Departments: {categories}
-    Ticket: {text}
-
-    Department name only:
-```
-
-### Feature extraction for clustering
-
-```yaml
-feature_extraction:
-  method: "hybrid"        # tfidf + sentence embeddings
-  tfidf:
-    max_features: 2000
-    ngram_range: [1, 2]
-  embedding:
-    model: "sentence-transformers"
-    sentence_transformers:
-      model_name: "all-MiniLM-L6-v2"
-```
+- **Guaranteed valid labels** — uses [instructor](https://python.useinstructor.com/) + Pydantic, so the LLM always returns one of your categories. No regex, no parsing errors.
+- **Unique-value optimization** — classifies each distinct text only once, then maps results back. Reduces API calls by up to 90% on real datasets.
+- **Multi-provider** — OpenAI, Anthropic, or Ollama (local, free). Same config, different `provider:` line.
+- **Dual mode** — run AI classification and clustering in the same job and compare results.
+- **Cost control** — set `max_cost_per_run` to hard-stop before overspending.
+- **Resumable** — checkpoints let you continue interrupted runs without re-classifying.
 
 ---
 
-## Architecture
+## Notebooks
 
-```
-classifai/
-├── main.py                 # Pipeline entry point
-├── config.py               # Configuration management
-├── config.example.yaml     # Annotated example
-├── modules/
-│   ├── ai_classifier.py    # LLM-based classification (OpenAI)
-│   ├── classifier.py       # Clustering algorithms
-│   ├── data_processor.py   # Data loading and preprocessing
-│   ├── evaluation.py       # Metrics and HTML reports
-│   └── utilities.py        # Logging, caching, checkpoints
-└── tools/
-    └── app.py              # Streamlit config generator UI
-```
+| | |
+|---|---|
+| [quickstart.ipynb](notebooks/quickstart.ipynb) — classify, cluster, visualize in one notebook | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/JuanLara18/classifai/blob/main/notebooks/quickstart.ipynb) |
 
 ---
 
-## Real-world use case
+## Cost reference
 
-classifai was developed as part of a research project at **Harvard Business School**, where it was used to classify manufacturing maintenance records from an industrial dataset. The pipeline processed thousands of work order descriptions in English and German, testing multiple classification taxonomies — from 2 broad categories to 20 granular failure modes — using GPT-based classification and traditional clustering in parallel.
+`gpt-4o-mini` with unique-value optimization:
 
-The goal was to surface patterns in manufacturing defects buried in unstructured text fields. The underlying data is confidential, but the methodology, pipeline, and configuration system are exactly what was used in that analysis.
+| Rows | Unique texts | Estimated cost |
+|---|---|---|
+| 10,000 | ~2,000 | ~$0.05 |
+| 100,000 | ~15,000 | ~$0.40 |
+| 1,000,000 | ~80,000 | ~$2.00 |
+
+Set `provider: ollama` to pay nothing.
 
 ---
 
-## Troubleshooting
+## File formats
 
-**API key not found**
-```bash
-cat .env   # should show OPENAI_API_KEY=sk-...
-```
+CSV, Stata (`.dta`), Excel (`.xlsx`).
 
-**Memory error during clustering**
-```yaml
-performance:
-  batch_size: 25    # reduce from default 50
-```
+---
 
-**Cost limit reached before completion**
-```yaml
-ai_classification:
-  cost_management:
-    max_cost_per_run: 20.0
-```
+## Real-world use
 
-**Logs and debug mode**
-```bash
-python main.py --config config.yaml --log-level debug
-# logs are also written to logs/classification.log
-```
+classifai was built during a research project at **Harvard Business School** to classify BMW manufacturing maintenance records — thousands of work order descriptions in English and German, across taxonomies from 2 to 20 categories. The underlying data is confidential, but the methodology is exactly what's in this repo.
 
 ---
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started, add a new backend, or report a bug.
-
----
+See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and new backends are especially welcome.
 
 ## License
 

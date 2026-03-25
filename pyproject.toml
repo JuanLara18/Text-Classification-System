@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "classifai"
 version = "0.2.0"
-description = "Classify text at any scale — from zero-shot with a local LLM to fine-tuned transformers — with a single unified interface."
+description = "Classify any text dataset with one config file. OpenAI, Anthropic, Ollama, or unsupervised clustering — same interface, guaranteed structured outputs."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
@@ -16,10 +16,14 @@ keywords = [
   "llm",
   "machine-learning",
   "clustering",
-  "zero-shot",
   "openai",
-  "transformers",
-  "setfit",
+  "ollama",
+  "instructor",
+  "pydantic",
+  "hdbscan",
+  "umap",
+  "zero-shot",
+  "structured-outputs",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -89,21 +93,15 @@ spark = [
   "pyarrow>=12.0",
 ]
 
-# Web UI
-ui = [
-  "streamlit>=1.30",
-  "fastapi>=0.100",
-  "uvicorn>=0.23",
-]
-
 # Everything except spark (recommended for most users)
 all = [
-  "classifai[llm,local,transformers,clustering,viz,ui]",
+  "classifai[llm,local,transformers,clustering,viz]",
 ]
 
 # Development
 dev = [
   "classifai[all]",
+  "ipykernel>=6.0",    # notebooks
   "pytest>=7.0",
   "pytest-cov>=4.0",
   "pytest-mock>=3.10",
