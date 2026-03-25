@@ -23,6 +23,8 @@ flowchart TD
 
 Uses [instructor](https://python.useinstructor.com/) to guarantee the model always returns one of your categories — no regex, no free-text parsing, no silent errors.
 
+The pipeline routes every `openai_classification` perspective through `LLMBackend.from_config()`, which applies the unique-value optimizer (90%+ API call reduction) and shows a rich progress bar with ETA automatically.
+
 ### OpenAI
 
 ```yaml
@@ -119,7 +121,7 @@ params:
 
 ```mermaid
 flowchart LR
-    T[Texts] --> E[Embed\nall-MiniLM-L6-v2]
+    T[Texts] --> E[Embed\nall-MiniLM-L6-v2\nauto GPU via device.py]
     E --> U[UMAP\ndimension reduction]
     U --> H[HDBSCAN\nclustering]
     H --> L[LLM\ncluster labeling]
